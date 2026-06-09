@@ -117,15 +117,95 @@ async function render(force) {
   loading = true;
   const body = el('cockpit-body');
   if (body && !loaded) body.classList.remove('cockpit-hidden');
-  el('cockpit-status') && (el('cockpit-status').innerHTML = '<div class="cockpit-loading">Connecting to your brain…</div>');
-  const [status, fleet, projects, auto, recent, jobs] = await Promise.all([
+  // Only show the "Connecting…" flicker on the very first load — not on the
+  // 5s live auto-refresh.
+  if (!loaded) el('cockpit-status') && (el('cockpit-status').innerHTML = '<div class="cockpit-loading">Connecting to your brain…</div>');
+  const [status, fleet, projects, auto, recent, jobs, limits] = await Promise.all([
     jget('/api/brain/status'), jget('/api/brain/usage'), jget('/api/brain/projects'),
     jget('/api/brain/auto-jobs?limit=8'),
-    jget('/api/brain/memory/recent?limit=12'), jget('/api/brain/deep-jobs?limit=8'),
+    jget('/api/brain/memory/recent?limit=12'), jget('/api/brain/deep-jobs?limit=12'),
+    jget('/api/brain/limits'),
   ]);
   loaded = true; loading = false;
+  renderNow(jobs, auto); renderLimits(limits);
   renderStatus(status); renderFleet(fleet); renderProjects(projects); renderAuto(auto); renderRecent(recent); renderBuilds(jobs);
 }
+
+// ── "Now Running" hero — everything happening across the brain this second:
+// active Deep Builds + Auto loops, with live elapsed time. The heartbeat of
+// Mission Control. ──
+function elapsedSince(ts) {
+  const d = new Date(ts); if (isNaN(d)) return '';
+  let s = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (s < 60) return s + 's';
+  const m = Math.floor(s / 60); const r = s % 60;
+  if (m < 60) return m + 'm ' + r + 's';
+  const h = Math.floor(m / 60); return h + 'h ' + (m % 60) + 'm';
+}
+function renderNow(jobsRes, autoRes) {
+  const box = el('cockpit-now'); if (!box) return;
+  const deep = (jobsRes && jobsRes.ok !== false) ? (jobsRes.data || []) : [];
+  const auto = (autoRes && autoRes.ok !== false) ? (autoRes.data || []) : [];
+  const items = [];
+  deep.filter((j) => j.status === 'running').forEach((j) => items.push({
+    kind: 'Deep Build', obj: j.objective, since: j.startedAt || j.updatedAt,
+    meta: `round ${j.rounds || 1}${typeof j.committed === 'number' ? ' · ' + j.committed + ' committed' : ''}`,
+  }));
+  auto.filter((j) => j.status === 'running' || j.status === 'queued').forEach((j) => items.push({
+    kind: 'Auto loop', obj: j.objective, since: j.startedAt || j.createdAt, meta: j.status,
+  }));
+  if (!items.length) {
+    const last = deep.find((j) => j.status === 'done') || deep[0];
+    box.classList.remove('active');
+    box.innerHTML = `<div class="cockpit-now-idle"><span class="cockpit-now-idle-dot"></span>All quiet — nothing building right now.${last ? `<span class="cockpit-now-last">last: ${esc((last.objective || '').slice(0, 56))}</span>` : ''}</div>`;
+    return;
+  }
+  box.classList.add('active');
+  box.innerHTML = `<div class="cockpit-now-head"><span class="cockpit-now-pulse"></span>${items.length} running now</div>` +
+    items.map((it) => `<div class="cockpit-now-row">
+      <span class="cockpit-now-kind">${esc(it.kind)}</span>
+      <span class="cockpit-now-obj">${esc((it.obj || '').slice(0, 88))}</span>
+      <span class="cockpit-now-meta">${esc(it.meta || '')} · ⏱ ${elapsedSince(it.since)}</span>
+    </div>`).join('');
+}
+
+// ── Limits — daily soft-limit usage, active model, and the auto role chain.
+// "seeing my limits" at a glance. ──
+function renderLimits(r) {
+  const box = el('cockpit-limits'); if (!box) return;
+  if (!r || r.ok === false) { box.innerHTML = ''; return; }
+  const s = (r.data || {}).summary || {};
+  const pct = Math.max(0, Math.min(100, s.globalPercentUsed || 0));
+  const state = s.globalState || 'ok';
+  const col = state === 'ok' ? '#3fd17a' : (state === 'warn' ? '#f0b429' : '#ff7a6b');
+  const chain = [s.autoPlannerId, s.autoCoderId, s.autoCheckerId].filter(Boolean).map((id) => ENGINE_LABEL[id] || id);
+  const warn = (s.warnings || [])[0];
+  box.innerHTML = `
+    <div class="cockpit-limits-head">
+      <span><strong>${s.totalCalls24h ?? 0}</strong> / ${s.globalDailySoftLimit ?? '∞'} calls today</span>
+      <span class="cockpit-limits-state" style="color:${col}">● ${esc(state)}</span>
+    </div>
+    <div class="cockpit-limits-bar"><span style="width:${pct}%;background:${col}"></span></div>
+    <div class="cockpit-limits-meta">${s.activeModel ? `active: <b>${esc(ENGINE_LABEL[s.activeProviderId] || s.activeProviderId || '')}</b> · ${esc(String(s.activeModel).slice(0, 26))}` : ''}${chain.length ? ` &nbsp;·&nbsp; auto: ${chain.map(esc).join(' → ')}` : ''}</div>
+    ${warn ? `<div class="cockpit-limits-warn">⚠ ${esc(String(warn).slice(0, 110))}</div>` : ''}`;
+}
+
+// ── Live auto-refresh: poll every 5s while the Cockpit is actually on-screen. ──
+let _refreshTimer = null;
+function cockpitVisible() {
+  const panel = document.querySelector('.memory-tab-panel[data-memory-panel="cockpit"]');
+  const modal = document.getElementById('memory-modal');
+  return !!(panel && modal && !modal.classList.contains('hidden') && panel.offsetParent !== null);
+}
+function startLive() {
+  if (_refreshTimer) return;
+  _refreshTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (!cockpitVisible()) { stopLive(); return; }
+    render(true);
+  }, 5000);
+}
+function stopLive() { if (_refreshTimer) { clearInterval(_refreshTimer); _refreshTimer = null; } }
 
 // ── Auto Mode: the self-scheduling night loop. Each row is a per-project
 // build loop with its planner/coder/checker engines + live status. ──
@@ -235,11 +315,13 @@ async function suggest() {
 
 document.addEventListener('DOMContentLoaded', () => {
   const tab = document.querySelector('.memory-tab[data-memory-tab="cockpit"]');
-  if (tab) tab.addEventListener('click', () => setTimeout(() => render(false), 30));
+  if (tab) tab.addEventListener('click', () => setTimeout(() => { render(false); startLive(); }, 30));
   const rf = el('cockpit-refresh');
   if (rf) rf.onclick = () => render(true);
   const sg = el('cockpit-suggest-btn');
   if (sg) sg.onclick = suggest;
+  // Stop the live poll when the Brain modal closes.
+  document.getElementById('close-memory-modal')?.addEventListener('click', stopLive);
 });
 
 const brainCockpit = { render };

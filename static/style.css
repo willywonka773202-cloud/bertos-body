@@ -36937,3 +36937,34 @@ body.theme-frosted .modal {
 }
 @media (max-height: 720px) { .bert-orb { width: 104px; height: 104px; } .bert-orb-core { inset: 24px; } .bert-orb-ring.r2 { inset: 10px; } .bert-orb-ring.r3 { inset: 20px; } }
 @media (max-height: 600px) { .bert-orb-wrap { display: none; } }
+
+/* ============================================================
+   Mission Control — the live cockpit (Now Running + Limits).
+   ============================================================ */
+.cockpit-live { display: inline-flex; align-items: center; gap: 5px; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.8px; color: #3fd17a; margin-left: 10px; }
+.cockpit-live-dot { width: 7px; height: 7px; border-radius: 50%; background: #3fd17a; box-shadow: 0 0 0 0 rgba(63,209,122,0.6); animation: ckpt-live 1.8s ease-out infinite; }
+@keyframes ckpt-live { 0% { box-shadow: 0 0 0 0 rgba(63,209,122,0.55); } 70% { box-shadow: 0 0 0 6px rgba(63,209,122,0); } 100% { box-shadow: 0 0 0 0 rgba(63,209,122,0); } }
+
+/* Now Running hero */
+.cockpit-now { border-radius: 13px; padding: 12px 14px; margin-bottom: 10px; border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02); transition: border-color .2s ease, background .2s ease; }
+.cockpit-now.active { border-color: rgba(63,209,122,0.4); background: linear-gradient(160deg, rgba(63,209,122,0.1), rgba(63,209,122,0.02)); }
+.cockpit-now-idle { display: flex; align-items: center; gap: 9px; font-size: 0.82rem; opacity: 0.7; flex-wrap: wrap; }
+.cockpit-now-idle-dot { width: 8px; height: 8px; border-radius: 50%; background: #9aa4b2; flex: 0 0 auto; }
+.cockpit-now-last { opacity: 0.5; font-size: 0.74rem; }
+.cockpit-now-head { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; font-weight: 650; color: #3fd17a; margin-bottom: 8px; }
+.cockpit-now-pulse { width: 9px; height: 9px; border-radius: 50%; background: #3fd17a; animation: ckpt-live 1.4s ease-out infinite; }
+.cockpit-now-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.05); }
+.cockpit-now-kind { flex: 0 0 auto; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #5884FF; background: rgba(88,132,255,0.12); border-radius: 5px; padding: 2px 6px; }
+.cockpit-now-obj { flex: 1 1 auto; min-width: 0; font-size: 0.8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cockpit-now-meta { flex: 0 0 auto; font-size: 0.7rem; opacity: 0.65; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Limits strip */
+.cockpit-limits { border-radius: 11px; padding: 10px 13px; margin-bottom: 12px; background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.06); }
+.cockpit-limits:empty { display: none; }
+.cockpit-limits-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.78rem; margin-bottom: 6px; }
+.cockpit-limits-head strong { font-size: 0.92rem; }
+.cockpit-limits-state { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; }
+.cockpit-limits-bar { height: 7px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; }
+.cockpit-limits-bar span { display: block; height: 100%; border-radius: 999px; transition: width 0.4s ease; }
+.cockpit-limits-meta { font-size: 0.7rem; opacity: 0.6; margin-top: 7px; }
+.cockpit-limits-warn { font-size: 0.7rem; color: #f0b429; margin-top: 6px; opacity: 0.9; }

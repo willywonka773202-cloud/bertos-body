@@ -114,4 +114,10 @@ def setup_brain_routes() -> APIRouter:
         loops (objective + planner/coder/checker role engines + status)."""
         return await _brain_get(f"/api/auto/jobs?limit={max(1, min(40, limit))}", timeout=12.0)
 
+    @router.get("/limits")
+    async def brain_limits():
+        """Usage limits + health summary (daily soft-limit, % used, active model,
+        auto role engines, warnings) — powers the 'seeing my limits' view."""
+        return await _brain_get("/api/usage/limits", timeout=10.0)
+
     return router
