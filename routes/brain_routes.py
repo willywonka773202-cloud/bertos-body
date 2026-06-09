@@ -314,6 +314,148 @@ def setup_brain_routes() -> APIRouter:
                     logger.debug(f"memory-lint llm failed: {e}")
         return {"ok": True, "structural": structural, "issues": issues, "model": model}
 
+    @router.get("/level-up")
+    async def brain_level_up():
+        """Level-up: the partner to /audit. Reasons through the five level-up
+        lenses (what repeats 3+ times? what felt manual? would a smart intern
+        nail it? what breaks at 10x? biggest growth lever?) against real recent
+        activity and emits a RANKED backlog of the next things to build. The
+        research's compounding self-improvement loop — /audit scores, /level-up
+        decides what to do about it. Free model; fails soft."""
+        projects, deepjobs, autojobs, recent, limits = await asyncio.gather(
+            _brain_get("/api/projects", 10.0),
+            _brain_get("/api/deep/jobs?limit=20", 12.0),
+            _brain_get("/api/auto/jobs?limit=20", 12.0),
+            _brain_get("/api/memory/recent?limit=40", 15.0),
+            _brain_get("/api/usage/limits", 10.0),
+        )
+        proj = (projects.get("data") or []) if projects.get("ok") else []
+        builds = (deepjobs.get("data") or []) if deepjobs.get("ok") else []
+        autos = (autojobs.get("data") or []) if autojobs.get("ok") else []
+        notes = ((recent.get("data") or {}).get("notes") or []) if recent.get("ok") else []
+        lim = ((limits.get("data") or {}).get("summary") or {}) if limits.get("ok") else {}
+        done_builds = [b for b in builds if b.get("status") == "done"]
+        build_objectives = [str(b.get("objective") or b.get("title") or "")[:80] for b in builds[:8]]
+        auto_status = {}
+        for a in autos:
+            k = a.get("status") or "?"
+            auto_status[k] = auto_status.get(k, 0) + 1
+        auto_objectives = [str(a.get("objective") or "")[:70] for a in autos[:5]]
+        recent_facts = [(n.get("preview") or "")[:100] for n in notes[:14] if n.get("preview")]
+        snapshot = (
+            f"PROJECTS ({len(proj)}): {', '.join(str(p.get('name') or p.get('id') or '?') for p in proj[:12]) or 'none'}.\n"
+            f"RECENT BUILDS ({len(done_builds)} done / {len(builds)} total): "
+            f"{'; '.join(o for o in build_objectives if o) or 'none yet'}.\n"
+            f"AUTOMATION LOOPS ({len(autos)}; by status: "
+            f"{', '.join(f'{k} {v}' for k, v in sorted(auto_status.items(), key=lambda kv: -kv[1])) or 'none'}): "
+            f"{'; '.join(o for o in auto_objectives if o) or 'no objectives'}.\n"
+            f"CAPACITY: {lim.get('globalPercentUsed', 0)}% of daily budget used, "
+            f"{lim.get('localOrFreeCalls24h', 0)} free + {lim.get('subscriptionCalls24h', 0)} paid calls/24h.\n"
+            f"RECENT MEMORY (what Will's been working on):\n" + "\n".join(f"  - {f}" for f in recent_facts)
+        )
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        url = model = None
+        try:
+            url, model, headers = resolve_endpoint("utility", free_only=True)
+            if not url:
+                url, model, headers = resolve_endpoint("default", free_only=True)
+        except Exception:
+            headers = {}
+        if not url or not model:
+            return {"ok": True, "snapshot": snapshot, "backlog": [], "note": "Configure a free model for the level-up backlog."}
+        prompt = (
+            "You are the level-up coach for a PERSONAL AI operating system ('Bert's AI'), owned by Will. "
+            "Using the activity snapshot, reason through these five lenses and produce a RANKED backlog of the "
+            "next 5 highest-leverage things to BUILD (a new skill, automation, connection, or capability):\n"
+            "1. REPEATS: what has Will (or the OS) done 3+ times that should be a reusable skill/automation?\n"
+            "2. MANUAL: what still feels manual or token-heavy that the OS could own end-to-end?\n"
+            "3. INTERN-TEST: what could a smart intern reliably do that the OS isn't doing yet?\n"
+            "4. 10X: what breaks or bottlenecks if Will's usage grew 10x?\n"
+            "5. LEVER: the single biggest growth lever for Will's actual goals (coding velocity, automation, life-admin).\n"
+            "Be concrete and grounded in the snapshot — name real projects/loops where you can. Rank by leverage (highest first). "
+            "Return ONLY JSON: {\"headline\":\"one line: the single most important next move\", "
+            "\"backlog\":[{\"title\":\"build X\",\"lens\":\"repeats|manual|intern|10x|lever\",\"why\":\"grounded reason <16 words\","
+            "\"build\":\"the concrete first step\",\"effort\":\"S|M|L\",\"leverage\":\"high|medium|low\"}]}\n\n"
+            f"SNAPSHOT:\n{snapshot}"
+        )
+        try:
+            raw = await llm_call_async(url, model, [{"role": "user", "content": prompt}], headers=headers, max_tokens=1400)
+        except Exception as e:
+            logger.debug(f"level-up llm failed: {e}")
+            return {"ok": True, "snapshot": snapshot, "backlog": [], "error": "ai_unavailable"}
+        import json as _json
+        import re as _re
+        parsed = None
+        try:
+            mch = _re.search(r"\{.*\}", (raw or "").strip(), _re.DOTALL)
+            if mch:
+                parsed = _json.loads(mch.group(0))
+        except Exception:
+            parsed = None
+        if not isinstance(parsed, dict):
+            return {"ok": True, "snapshot": snapshot, "backlog": [], "headline": (raw or "").strip()[:200], "model": model}
+        backlog = parsed.get("backlog") if isinstance(parsed.get("backlog"), list) else []
+        return {"ok": True, "snapshot": snapshot,
+                "headline": str(parsed.get("headline") or "")[:200],
+                "backlog": backlog[:6], "model": model}
+
+    @router.get("/memory-hot")
+    async def brain_memory_hot():
+        """Hot-cache: a compact, always-fresh digest of the most-recent decisions
+        and context, served live from the memory vault. The research's hot.md —
+        but as a live API read (never stale) instead of a static file, so any
+        query can grab 'what's hot right now' cheaply without crawling the graph.
+        Free model distils; deterministic fallback if no model. Fails soft."""
+        recent = await _brain_get("/api/memory/recent?limit=30", 15.0)
+        notes = ((recent.get("data") or {}).get("notes") or []) if recent.get("ok") else []
+        previews = [(n.get("preview") or "").strip() for n in notes if n.get("preview")]
+        previews = [p for p in previews if p][:24]
+        # Deterministic fallback hot-cache: the most recent previews, char-capped.
+        det_lines, total = [], 0
+        for p in previews:
+            line = "- " + p[:110]
+            if total + len(line) > 650:
+                break
+            det_lines.append(line)
+            total += len(line) + 1
+        deterministic = "\n".join(det_lines)
+        if not previews:
+            return {"ok": True, "hot": "", "items": [], "note": "No recent memory to distil.", "model": None}
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        url = model = None
+        try:
+            url, model, headers = resolve_endpoint("utility", free_only=True)
+            if not url:
+                url, model, headers = resolve_endpoint("default", free_only=True)
+        except Exception:
+            headers = {}
+        if not url or not model:
+            return {"ok": True, "hot": deterministic, "items": det_lines, "model": None, "mode": "deterministic"}
+        prompt = (
+            "You maintain the HOT-CACHE for a personal AI ('Bert's AI'): the ~5-7 most important things to know "
+            "RIGHT NOW about what Will is working on and the latest decisions, so a query can skip crawling the full "
+            "memory graph. From these recent memory notes, write a tight hot-cache: at most 7 bullets, each <14 words, "
+            "newest/most-active first, no fluff, no preamble. Return ONLY JSON: "
+            '{"hot":["bullet","bullet",...]}.\n\nRECENT NOTES:\n' + "\n".join(f"- {p[:120]}" for p in previews)
+        )
+        try:
+            raw = await llm_call_async(url, model, [{"role": "user", "content": prompt}], headers=headers, max_tokens=600)
+            import json as _json
+            import re as _re
+            mch = _re.search(r"\{.*\}", (raw or "").strip(), _re.DOTALL)
+            if mch:
+                p = _json.loads(mch.group(0))
+                if isinstance(p, dict) and isinstance(p.get("hot"), list):
+                    bullets = [str(b).strip() for b in p["hot"] if str(b).strip()][:7]
+                    if bullets:
+                        return {"ok": True, "hot": "\n".join("- " + b for b in bullets),
+                                "items": bullets, "model": model, "mode": "ai"}
+        except Exception as e:
+            logger.debug(f"memory-hot llm failed: {e}")
+        return {"ok": True, "hot": deterministic, "items": det_lines, "model": model, "mode": "deterministic"}
+
     @router.post("/notify-test")
     async def brain_notify_test():
         """Send a test push to the configured channel (ntfy → phone) so the user

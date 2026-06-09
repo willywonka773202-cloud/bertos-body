@@ -37039,6 +37039,17 @@ body.theme-frosted .modal {
 .cockpit-audit-gap-why { font-size: 0.74rem; opacity: 0.7; line-height: 1.4; margin: 4px 0 7px; }
 .cockpit-audit-foot { font-size: 0.66rem; opacity: 0.45; text-align: right; margin-top: 4px; }
 
+/* ---- Mission Control: level-up backlog ---- */
+.cockpit-levelup-headline { font-size: 0.84rem; font-weight: 600; line-height: 1.4; margin: 2px 0 10px; padding: 8px 10px; border-radius: 10px; background: rgba(88,132,255,0.09); border: 1px solid rgba(88,132,255,0.22); color: #cdd7ff; }
+.cockpit-levelup-lens { flex: 0 0 auto; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.4px; opacity: 0.6; white-space: nowrap; }
+.cockpit-levelup-lev { flex: 0 0 auto; font-size: 0.62rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; white-space: nowrap; }
+
+/* ---- Mission Control: hot context ---- */
+.cockpit-hot-list { display: flex; flex-direction: column; gap: 1px; }
+.cockpit-hot-item { font-size: 0.8rem; line-height: 1.45; padding: 7px 0 7px 16px; position: relative; border-top: 1px solid rgba(255,255,255,0.05); }
+.cockpit-hot-item:first-child { border-top: none; }
+.cockpit-hot-item::before { content: '🔥'; position: absolute; left: 0; top: 7px; font-size: 0.62rem; opacity: 0.8; }
+
 /* ---- Mission Control: memory-lint ---- */
 .cockpit-lint-stats { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
 .cockpit-lint-stat { display: inline-flex; flex-direction: column; align-items: center; min-width: 58px; padding: 7px 9px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }

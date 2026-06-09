@@ -405,6 +405,49 @@ async function runAudit() {
   box.querySelectorAll('.cockpit-build-btn[data-act]').forEach((b) => { b.onclick = () => prefillChat(`Let's level up Bert's AI — help me with: ${b.dataset.act}`); });
 }
 
+const LENS_LABEL = { repeats: '↻ repeats', manual: '✋ manual', intern: '🎓 intern-test', '10x': '📈 10x', lever: '🎯 lever' };
+async function runLevelUp() {
+  const box = el('cockpit-levelup'), btn = el('cockpit-levelup-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Working out your highest-leverage next builds… (free model, ~30s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '🚀 Thinking…'; }
+  const r = await jget('/api/brain/level-up');
+  if (btn) { btn.disabled = false; btn.textContent = '🚀 Re-run level-up'; }
+  if (!r || r.ok === false) { box.innerHTML = `<div class="cockpit-empty">Couldn't run level-up${r && r.code === 'BRAIN_ERROR' ? ' (update the brain)' : ''}.</div>`; return; }
+  const backlog = r.backlog || [];
+  const LEV = { high: '#3fd17a', medium: '#5884FF', low: '#7a8499' };
+  box.innerHTML = `
+    ${r.headline ? `<div class="cockpit-levelup-headline">🎯 ${esc(String(r.headline).slice(0, 160))}</div>` : ''}
+    ${backlog.length ? backlog.map((g, i) => `
+      <div class="cockpit-audit-gap">
+        <div class="cockpit-audit-gap-top">
+          <span class="cockpit-audit-gap-rank">${i + 1}</span>
+          <span class="cockpit-audit-gap-title">${esc(g.title || '')}</span>
+          <span class="cockpit-levelup-lens">${esc(LENS_LABEL[g.lens] || g.lens || '')}</span>
+          <span class="cockpit-levelup-lev" style="color:${LEV[g.leverage] || LEV.medium}">${esc(g.leverage || '')}${g.effort ? ` · ${esc(g.effort)}` : ''}</span>
+        </div>
+        ${g.why ? `<div class="cockpit-audit-gap-why">${esc(String(g.why).slice(0, 150))}</div>` : ''}
+        ${g.build ? `<button class="cockpit-build-btn" data-act="${esc(g.build)}">▶ ${esc(String(g.build).slice(0, 62))}</button>` : ''}
+      </div>`).join('') : `<div class="cockpit-empty">${esc(r.headline || r.note || 'No backlog available.')}</div>`}
+    ${r.model ? `<div class="cockpit-audit-foot">planned by ${esc(String(r.model).slice(0, 22))}</div>` : ''}`;
+  box.querySelectorAll('.cockpit-build-btn[data-act]').forEach((b) => { b.onclick = () => prefillChat(`Let's build this next for Bert's AI: ${b.dataset.act}`); });
+}
+
+async function runHot() {
+  const box = el('cockpit-hot'), btn = el('cockpit-hot-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Distilling what's hot right now…</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '🔥 Reading…'; }
+  const r = await jget('/api/brain/memory-hot');
+  if (btn) { btn.disabled = false; btn.textContent = '🔥 Refresh hot context'; }
+  if (!r || r.ok === false) { box.innerHTML = `<div class="cockpit-empty">Couldn't read memory${r && r.code === 'BRAIN_ERROR' ? ' (update the brain)' : ''}.</div>`; return; }
+  const items = (r.items || []).map((s) => String(s).replace(/^[-•]\s*/, '').trim()).filter(Boolean);
+  box.innerHTML = items.length
+    ? `<div class="cockpit-hot-list">${items.map((it) => `<div class="cockpit-hot-item">${esc(it.slice(0, 130))}</div>`).join('')}</div>
+       <div class="cockpit-audit-foot">${r.mode === 'ai' && r.model ? `distilled by ${esc(String(r.model).slice(0, 22))}` : 'most-recent decisions · live from the vault'}</div>`
+    : `<div class="cockpit-empty">${esc(r.note || 'No recent memory to surface.')}</div>`;
+}
+
 const LINT_ICON = { stale: '🕰', redundant: '⧉', conflict: '⚠' };
 async function runLint() {
   const box = el('cockpit-lint'), btn = el('cockpit-lint-btn');
@@ -442,8 +485,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sg) sg.onclick = suggest;
   const ab = el('cockpit-audit-btn');
   if (ab) ab.onclick = runAudit;
+  const lub = el('cockpit-levelup-btn');
+  if (lub) lub.onclick = runLevelUp;
   const lb = el('cockpit-lint-btn');
   if (lb) lb.onclick = runLint;
+  const hb = el('cockpit-hot-btn');
+  if (hb) hb.onclick = runHot;
   // Stop the live poll when the Brain modal closes.
   document.getElementById('close-memory-modal')?.addEventListener('click', stopLive);
 });
