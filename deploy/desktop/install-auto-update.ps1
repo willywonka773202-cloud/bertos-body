@@ -8,7 +8,9 @@
 # Run once (from anywhere):
 #   powershell -ExecutionPolicy Bypass -File C:\BertOS\odysseus\deploy\desktop\install-auto-update.ps1
 
-$ErrorActionPreference = "Stop"
+# Continue (not Stop): git writes progress/info to stderr, which would otherwise
+# halt the script. We check exit codes explicitly where it matters.
+$ErrorActionPreference = "Continue"
 $repo = "C:\BertOS\odysseus"
 $remoteUrl = "https://github.com/willywonka773202-cloud/bertos-body.git"
 Set-Location $repo
@@ -17,8 +19,9 @@ Write-Host "==> Wiring $repo to $remoteUrl (bertos branch)..."
 if (-not (Test-Path "$repo\.git")) {
   git init | Out-Null
 }
-git remote remove deploy 2>$null
-git remote add deploy $remoteUrl
+# Idempotent: set-url if the remote already exists, else add it.
+if ((git remote 2>$null) -contains 'deploy') { git remote set-url deploy $remoteUrl }
+else { git remote add deploy $remoteUrl }
 git fetch deploy bertos
 # Match GitHub for TRACKED files only; gitignored data/.env/BertOS-Vault are left alone.
 git reset --hard deploy/bertos
