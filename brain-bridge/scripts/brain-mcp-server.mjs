@@ -152,21 +152,39 @@ server.registerTool(
     // Carry the bearer token when set so a token-gated daemon doesn't 401 the probe.
     const daemonHeaders = DAEMON_TOKEN ? { authorization: `Bearer ${DAEMON_TOKEN}` } : undefined;
     const [next, daemon] = await Promise.all([
-      probe(BASE_URL, "/api/deep/jobs?limit=1"),
+      probe(BASE_URL, "/api/deep/jobs?limit=1", 6000),
       probe(DAEMON_URL, "/health", 2500, daemonHeaders),
     ]);
-    // Next is the core requirement (Council can run on Next alone); Deep Build/Auto
-    // ALSO need the daemon, so surface build-readiness explicitly.
-    const canBuild = next.ok && daemon.ok;
+    // Build-readiness (Deep Build/Auto/build) needs the daemon. The DIRECT probe
+    // works on a native run (loopback reachable). But when the body runs in a
+    // container, the daemon is loopback-only on the host and NOT reachable at
+    // host.docker.internal — yet the brain's Next server reaches it locally, so
+    // builds DO work. Fall back to the Next-side doctor check ("Local daemon") so
+    // canBuild is HONEST in the container case instead of falsely false.
+    let daemonOk = daemon.ok;
+    let daemonVia = daemon.ok ? "direct" : null;
+    if (!daemon.ok && next.ok) {
+      try {
+        const res = await fetch(BASE_URL + "/api/doctor", { signal: AbortSignal.timeout(8000) });
+        const j = await res.json();
+        const checks = (j && j.data && j.data.checks) || (j && j.checks) || [];
+        const dmn = checks.find((c) => /daemon/i.test(String(c && (c.name || c.id || ""))));
+        if (dmn && dmn.status === "ok") { daemonOk = true; daemonVia = "next-doctor"; }
+      } catch {
+        /* /api/doctor missing (older brain) — leave daemonOk false, builds may still work */
+      }
+    }
+    const canBuild = next.ok && daemonOk;
     const health = {
       ok: next.ok,
       canBuild,
       next: { url: BASE_URL, ...next },
-      daemon: { url: DAEMON_URL, ...daemon },
+      daemon: { url: DAEMON_URL, ...daemon, effectiveOk: daemonOk, reachedVia: daemonVia },
       allowPaid: ALLOW_PAID,
       hint: next.ok
-        ? `Brain Next is reachable — Council can run. Deep Build/Auto ALSO need the daemon (daemon.ok=${daemon.ok}).`
-        : "Brain Next server is DOWN. Run `npm run bertos:host` in ~/Documents/bertosV2.",
+        ? `Brain Next reachable — Council / plan / chat work. Build-readiness (Deep Build/Auto/build): ${canBuild ? "READY" : "daemon not confirmed"}` +
+          (daemonVia === "next-doctor" ? " (daemon confirmed via the brain server; direct probe N/A inside a container)." : ".")
+        : "Brain Next server is DOWN. Run `npm run bertos:host` in your bertosV2.",
     };
     return { content: [{ type: "text", text: JSON.stringify(health, null, 2) }] };
   }
