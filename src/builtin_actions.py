@@ -116,9 +116,10 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             if len(group_memories) < 2:
                 return False
 
-            url, model, headers = resolve_endpoint("utility", owner=group_owner or None)
+            # Unattended scheduled action — force free/local (free_only=True).
+            url, model, headers = resolve_endpoint("utility", owner=group_owner or None, free_only=True)
             if not url or not model:
-                url, model, headers = resolve_endpoint("default", owner=group_owner or None)
+                url, model, headers = resolve_endpoint("default", owner=group_owner or None, free_only=True)
             if not url or not model:
                 return False
 
@@ -602,9 +603,10 @@ async def action_classify_events(owner: str, **kwargs) -> Tuple[str, bool]:
             if not events:
                 return "No upcoming events to classify", True
 
-            llm_url, llm_model, llm_headers = resolve_endpoint("utility", owner=owner)
+            # Unattended scheduled action — force free/local (free_only=True).
+            llm_url, llm_model, llm_headers = resolve_endpoint("utility", owner=owner, free_only=True)
             if not llm_url:
-                llm_url, llm_model, llm_headers = resolve_endpoint("default", owner=owner)
+                llm_url, llm_model, llm_headers = resolve_endpoint("default", owner=owner, free_only=True)
             llm_available = bool(llm_url and llm_model)
 
             # Pull user memories so the LLM has personal context (relationships,
@@ -876,9 +878,10 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         if not eligible:
             return "All sender sigs already cached (or no eligible senders)", True
 
-        url, model, headers = resolve_endpoint("utility", owner=owner)
+        # Unattended scheduled action — force free/local (free_only=True).
+        url, model, headers = resolve_endpoint("utility", owner=owner, free_only=True)
         if not url or not model:
-            url, model, headers = resolve_endpoint("default", owner=owner)
+            url, model, headers = resolve_endpoint("default", owner=owner, free_only=True)
         if not url or not model:
             return "No LLM endpoint available", False
 
@@ -1136,7 +1139,8 @@ async def action_test_skills(owner: str, **kwargs) -> Tuple[str, bool]:
         if not names:
             raise TaskNoop("no skills to test")
 
-        url, model, headers = resolve_endpoint("default", owner=owner)
+        # Unattended scheduled action — force free/local (free_only=True).
+        url, model, headers = resolve_endpoint("default", owner=owner, free_only=True)
         if not url or not model:
             return "No Default/Utility model configured — set one in Settings.", False
 
@@ -1411,6 +1415,7 @@ async def action_ping_notes(owner: str, **kwargs) -> Tuple[str, bool]:
                     await dispatch_reminder(
                         title=title, note_body=body, note_id=n.id,
                         owner=n.owner or owner or "",
+                        free_only=True,  # unattended scheduled action
                     )
                     cache[n.id] = now.isoformat()
                     sent.append(title)
@@ -1489,12 +1494,13 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
 
         # ── 1. Resolve LLM candidates (utility primary + utility fallbacks; fall
         # through to default chat as a last resort).
-        url, model, headers = resolve_endpoint("utility", owner=owner)
+        # Unattended scheduled action — force free/local (free_only=True).
+        url, model, headers = resolve_endpoint("utility", owner=owner, free_only=True)
         if not url or not model:
-            url, model, headers = resolve_endpoint("default", owner=owner)
+            url, model, headers = resolve_endpoint("default", owner=owner, free_only=True)
         if not url or not model:
             return "No LLM endpoint available", False
-        candidates = [(url, model, headers)] + resolve_utility_fallback_candidates(owner=owner)
+        candidates = [(url, model, headers)] + resolve_utility_fallback_candidates(owner=owner, free_only=True)
 
         # ── 2. Enumerate enabled accounts. Match this task's owner AND fall
         # back to the legacy "unowned account whose imap_user / from_address
@@ -1904,6 +1910,7 @@ async def action_check_email_urgency(owner: str, **kwargs) -> Tuple[str, bool]:
                 dispatch_result = await dispatch_reminder(
                     title=title, note_body=body, note_id="urgent-email",
                     owner=owner or "",
+                    free_only=True,  # unattended scheduled action
                 )
                 channel = (settings.get("reminder_channel") or "browser").strip().lower()
                 delivered = bool(dispatch_result.get("browser_sent"))

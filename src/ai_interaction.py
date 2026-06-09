@@ -98,6 +98,16 @@ def _resolve_model(spec: str, owner: Optional[str] = None) -> Tuple[str, str, Di
                              (f" matching '{target_endpoint_name}'" if target_endpoint_name else ""))
 
         for ep in endpoints:
+            # Free-first guardrail: this selector bypasses resolve_endpoint and
+            # is reachable unattended (teacher escalation in the agent loop, the
+            # chat_with_model / ask_teacher agent tools). Skip a paid endpoint
+            # when the BERTOS_ALLOW_PAID kill-switch is off.
+            try:
+                from src.endpoint_resolver import _paid_blocked
+                if _paid_blocked(ep, free_only=False):
+                    continue
+            except Exception:
+                pass
             try:
                 base, api_key = resolve_endpoint_runtime(ep, owner=owner)
             except Exception:

@@ -71,6 +71,24 @@ class EmbeddingClient:
         if not texts:
             return np.array([], dtype="float32")
 
+        # Free-first guardrail: never run embeddings against a KNOWN paid host on
+        # autopilot — RAG/memory indexing is unattended. Blocks unless the owner
+        # opted in (BERTOS_ALLOW_PAID=1). Local / self-hosted / native embedding
+        # servers are unaffected; the caller falls back to local FastEmbed.
+        try:
+            from src.endpoint_resolver import _host_is_known_paid
+            from src.constants import allow_paid
+            if _host_is_known_paid(self.url) and not allow_paid():
+                raise RuntimeError(
+                    f"[guardrail] paid embedding host {self.url!r} blocked by the "
+                    f"free-first guardrail (set BERTOS_ALLOW_PAID=1 to allow); "
+                    f"falling back to local FastEmbed."
+                )
+        except RuntimeError:
+            raise
+        except Exception:
+            pass
+
         # Batch in chunks of 64 to avoid oversized requests
         all_vecs = []
         for i in range(0, len(texts), 64):

@@ -321,6 +321,17 @@ def setup_webhook_routes(
                     "No session, api_key, or configured endpoints. "
                     "Pass api_key + model, or configure an endpoint in Admin.")
 
+            # Free-first guardrail: this machine (API-token) path bypasses
+            # resolve_endpoint, so gate the selected fallback endpoint here.
+            # Blocked when paid and the BERTOS_ALLOW_PAID kill-switch is off.
+            from src.endpoint_resolver import _paid_blocked
+            if _paid_blocked(ep, free_only=False):
+                raise HTTPException(
+                    402,
+                    "Paid endpoint blocked by free-first guardrail "
+                    "(set BERTOS_ALLOW_PAID=1 to allow paid).",
+                )
+
             base_url = normalize_base(ep.base_url)
             endpoint_url = build_chat_url(base_url)
             model = body.model or "auto"

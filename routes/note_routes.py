@@ -142,6 +142,7 @@ async def dispatch_reminder(
     owner: str = "",
     queue_browser: bool = True,
     settings_override: dict | None = None,
+    free_only: bool = False,
 ) -> dict:
     """Fire a reminder via the configured channel (browser/email/ntfy/webhook).
 
@@ -208,9 +209,11 @@ async def dispatch_reminder(
         try:
             from src.endpoint_resolver import resolve_endpoint
             from src.llm_core import llm_call_async
-            url, model, headers = resolve_endpoint("utility", owner=owner or None)
+            # free_only is True when the scheduler fires this reminder; the
+            # interactive /trigger route leaves it False.
+            url, model, headers = resolve_endpoint("utility", owner=owner or None, free_only=free_only)
             if not url:
-                url, model, headers = resolve_endpoint("default", owner=owner or None)
+                url, model, headers = resolve_endpoint("default", owner=owner or None, free_only=free_only)
             if url and model:
                 raw = await llm_call_async(
                     url=url, model=model,

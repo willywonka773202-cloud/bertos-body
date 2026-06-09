@@ -70,6 +70,162 @@ def _endpoint_enabled_models(ep) -> list:
     return [m for m in _endpoint_cached_models(ep) if m not in hidden]
 
 
+# ---------------------------------------------------------------------------
+# Free-first cost guardrail (BertOS)
+# ---------------------------------------------------------------------------
+# Hosts that bill per-token (metered external APIs). Membership is decided by
+# hostname (exact or subdomain) via _host_match — NOT substring — so a path or
+# query that merely contains the domain text is never misclassified. The list
+# mirrors src/llm_core._provider_label.
+_PAID_HOSTS = (
+    "openai.com",
+    "anthropic.com",
+    "openrouter.ai",
+    "googleapis.com",      # Google / Gemini
+    "google.com",
+    "x.ai",                # xAI
+    "mistral.ai",
+    "deepseek.com",
+    "together.xyz", "together.ai",
+    "fireworks.ai",
+    "groq.com",
+    "opencode.ai",         # opencode-zen / opencode-go
+    "ollama.com",          # Ollama Cloud (metered) — distinct from native local Ollama
+    "perplexity.ai",
+    "cohere.com", "cohere.ai",
+    "ai21.com",
+    "voyageai.com",        # paid embeddings
+    "anyscale.com",
+    "replicate.com",
+    "openai.azure.com",    # Azure OpenAI (*.openai.azure.com)
+)
+
+# Subscription-backed or local hosts that are FREE at call time. Loopback hosts
+# are matched separately (exact hostname) since they have no registrable domain.
+_FREE_HOSTS = (
+    "localhost",
+    "127.0.0.1",
+    "::1",
+    "0.0.0.0",
+)
+
+
+def _host_is_known_paid(base: str) -> bool:
+    """True iff the host is a KNOWN metered provider — the owner's real money
+    risk (their cloud API keys). Hostname match (exact/subdomain), not substring."""
+    base = (base or "").strip()
+    if not base:
+        return False
+    return _host_match(base, *_PAID_HOSTS)
+
+
+def _host_is_known_free(base: str) -> bool:
+    """True iff the host is free at call time: subscription-backed (ChatGPT/
+    Copilot), native (local) Ollama, or loopback / explicitly-local."""
+    base = (base or "").strip()
+    if not base:
+        return False
+    # Subscription-backed providers are flat-rate (free at call time).
+    try:
+        from src.chatgpt_subscription import is_chatgpt_subscription_base
+        if is_chatgpt_subscription_base(base):
+            return True
+    except Exception:
+        pass
+    try:
+        from src.copilot import is_copilot_base
+        if is_copilot_base(base):
+            return True
+    except Exception:
+        pass
+    # Native (local) Ollama is free; Ollama Cloud (ollama.com) is paid (below).
+    try:
+        from src.llm_core import _is_ollama_native_url
+        if _is_ollama_native_url(base) and not _host_match(base, "ollama.com"):
+            return True
+    except Exception:
+        pass
+    # Loopback / explicitly-local hosts are free.
+    try:
+        host = (urlparse(base).hostname or "").lower().rstrip(".")
+    except Exception:
+        host = ""
+    return host in _FREE_HOSTS
+
+
+def _host_is_paid(base: str) -> bool:
+    """Dispatch-level host classification (no endpoint row available).
+
+    Returns True ONLY for KNOWN metered hosts (the owner's cloud API keys).
+    Unknown / self-hosted / loopback hosts are NOT blocked at dispatch, so a
+    private OpenAI-compatible server (LAN / Tailscale / custom domain) stays
+    usable. The stricter kind-aware policy lives in _endpoint_is_paid, where the
+    endpoint row (endpoint_kind / is_paid column) is available.
+    """
+    if _host_is_known_free(base):
+        return False
+    return _host_is_known_paid(base)
+
+
+def _endpoint_is_paid(ep) -> bool:
+    """Whether a ModelEndpoint row should be treated as paid/metered.
+
+    Free-first + self-hosted-friendly policy:
+      1. an explicit is_paid column wins;
+      2. a KNOWN paid host -> paid; a KNOWN free host (loopback / native Ollama /
+         subscription-backed) -> free;
+      3. unknown host -> only an explicitly endpoint_kind='api' row fails CLOSED
+         to paid (the owner declared it a cloud API). 'local'/'proxy'/'auto'/
+         unset default to FREE so self-hosted servers on custom hosts/IPs work.
+    Mark is_paid=True on any endpoint to force it paid regardless of host.
+    """
+    explicit = getattr(ep, "is_paid", None)
+    if explicit is not None:
+        return bool(explicit)
+    base = normalize_base(getattr(ep, "base_url", "") or "")
+    if _host_is_known_paid(base):
+        return True
+    if _host_is_known_free(base):
+        return False
+    kind = (getattr(ep, "endpoint_kind", "") or "auto").lower()
+    return kind == "api"
+
+
+def _paid_blocked(ep, free_only: bool = False) -> bool:
+    """True when this endpoint must be refused on cost grounds.
+
+    An endpoint is blocked when it is PAID and either this caller is
+    free-only (background/unattended work) OR the global BERTOS_ALLOW_PAID
+    kill-switch is OFF. Read the switch LIVE so it hot-flips and tests can
+    monkeypatch.
+    """
+    if not _endpoint_is_paid(ep):
+        return False
+    try:
+        from src.constants import allow_paid
+        switch_on = allow_paid()
+    except Exception:
+        switch_on = False
+    return free_only or not switch_on
+
+
+def _host_paid_blocked(url: str, free_only: bool = False) -> bool:
+    """Dispatch-level variant of _paid_blocked keyed on a raw target URL.
+
+    Used by the fail-closed guard in src/llm_core so direct-build callers that
+    bypass resolve_endpoint still cannot spend by default. The URL here is the
+    built chat URL; _host_is_paid normalizes/classifies by hostname.
+    """
+    if not _host_is_paid(url):
+        return False
+    try:
+        from src.constants import allow_paid
+        switch_on = allow_paid()
+    except Exception:
+        switch_on = False
+    return free_only or not switch_on
+
+
 def resolve_endpoint_runtime(ep, owner: Optional[str] = None) -> Tuple[str, Optional[str]]:
     """Resolve a ModelEndpoint row to its runtime base URL and bearer/API key.
 
@@ -224,6 +380,7 @@ def resolve_endpoint(
     fallback_model: Optional[str] = None,
     fallback_headers: Optional[Dict] = None,
     owner: Optional[str] = None,
+    free_only: bool = False,
 ) -> Tuple[Optional[str], Optional[str], Optional[Dict]]:
     """Resolve an endpoint/model from settings, with fallback.
 
@@ -233,6 +390,11 @@ def resolve_endpoint(
         fallback_url:    URL to use if settings are empty or endpoint missing.
         fallback_model:  Model to use if settings are empty.
         fallback_headers: Headers to use if using fallback.
+        free_only:       When True (background/unattended callers), a paid
+                         endpoint is refused and the resolver falls through to
+                         the free/local fallback instead. The global
+                         BERTOS_ALLOW_PAID kill-switch (read live) blocks paid
+                         endpoints for ALL callers when off.
 
     Returns:
         (endpoint_url, model, headers) — resolved or fallback values.
@@ -257,34 +419,71 @@ def resolve_endpoint(
     if not ep_id and fallback_url and fallback_model:
         return fallback_url, fallback_model, fallback_headers
 
+    # Build the ordered (ep_id, model) cascade. Under the free-first guardrail
+    # a paid/blocked tier is skipped so we keep descending toward the free
+    # default rather than failing. Without the guardrail only the first tier is
+    # consulted (legacy behaviour: ep_id resolved by the cascade below).
+    tiers: list = []
+    seen_ids: set = set()
+
+    def _add_tier(eid: str, mdl: str):
+        eid = (eid or "").strip()
+        if eid and eid not in seen_ids:
+            seen_ids.add(eid)
+            tiers.append((eid, (mdl or "").strip()))
+
+    _add_tier(ep_id, model)
     # Unset Utility means "same as Default Chat Model".
-    if setting_prefix == "utility" and not ep_id:
-        ep_id = _stg("default_endpoint_id")
-        model = _stg("default_model")
+    if setting_prefix == "utility":
+        _add_tier(_stg("default_endpoint_id"), _stg("default_model"))
+    else:
+        # task/research/auto-naming descend through utility then default.
+        _add_tier(_stg("utility_endpoint_id"), _stg("utility_model"))
+        _add_tier(_stg("default_endpoint_id"), _stg("default_model"))
 
-    # Fall back to utility model for task/research/auto-naming if not specifically configured.
-    # If Utility itself is unset, the block above makes that resolve to Default Chat.
-    if not ep_id and setting_prefix != "utility":
-        ep_id = _stg("utility_endpoint_id")
-        model = _stg("utility_model")
-        if not ep_id:
-            ep_id = _stg("default_endpoint_id")
-            model = _stg("default_model")
-
-    if not ep_id:
+    if not tiers:
         return fallback_url, fallback_model, fallback_headers
 
     db = SessionLocal()
     try:
-        ep = db.query(ModelEndpoint).filter(
-            ModelEndpoint.id == ep_id,
-            ModelEndpoint.is_enabled == True,
-        )
-        if owner:
-            from src.auth_helpers import owner_filter
-            ep = owner_filter(ep, ModelEndpoint, owner).first()
-        else:
-            ep = ep.first()
+        ep = None
+        ep_id, model = tiers[0]
+        # `skipped_paid` records that an earlier tier resolved to a real
+        # endpoint we refused on cost grounds. Only then do we keep descending
+        # past a missing/disabled tier — this preserves legacy behaviour
+        # (return fallback when the FIRST configured tier's row is absent)
+        # while letting the guardrail land on a lower free tier.
+        skipped_paid = False
+        for cand_id, cand_model in tiers:
+            q = db.query(ModelEndpoint).filter(
+                ModelEndpoint.id == cand_id,
+                ModelEndpoint.is_enabled == True,
+            )
+            if owner:
+                from src.auth_helpers import owner_filter
+                cand_ep = owner_filter(q, ModelEndpoint, owner).first()
+            else:
+                cand_ep = q.first()
+            if not cand_ep:
+                if skipped_paid:
+                    continue
+                break
+            # Free-first cost guardrail: refuse a paid endpoint when this caller
+            # is free-only or when the global kill-switch is off. Skip this tier
+            # and keep descending toward the free/local default rather than
+            # raising.
+            if _paid_blocked(cand_ep, free_only):
+                logger.info(
+                    "[guardrail] refusing paid endpoint %r for prefix %r "
+                    "(free_only=%s) — descending cascade toward free/local",
+                    cand_id, setting_prefix, free_only,
+                )
+                skipped_paid = True
+                continue
+            ep = cand_ep
+            ep_id, model = cand_id, cand_model
+            break
+
         if not ep:
             return fallback_url, fallback_model, fallback_headers
 
@@ -317,12 +516,16 @@ def resolve_endpoint(
 
 
 def resolve_endpoint_by_id(
-    ep_id: str, model: Optional[str] = None, owner: Optional[str] = None
+    ep_id: str, model: Optional[str] = None, owner: Optional[str] = None,
+    free_only: bool = False,
 ) -> Optional[Tuple[str, str, Dict]]:
     """Resolve a specific endpoint id (+ optional model) to (chat_url, model, headers).
 
     Returns None if the endpoint doesn't exist or is disabled. Used to turn
     a configured fallback entry ({endpoint_id, model}) into a dispatch target.
+
+    When free_only is True (or the global BERTOS_ALLOW_PAID kill-switch is off)
+    a paid endpoint resolves to None so it is dropped from any fallback chain.
     """
     if not ep_id:
         return None
@@ -337,6 +540,13 @@ def resolve_endpoint_by_id(
             q = owner_filter(q, ModelEndpoint, owner)
         ep = q.first()
         if not ep:
+            return None
+        # Free-first cost guardrail: drop a paid endpoint from fallback chains.
+        if _paid_blocked(ep, free_only):
+            logger.info(
+                "[guardrail] dropping paid endpoint %r from fallback "
+                "(free_only=%s)", ep_id, free_only,
+            )
             return None
         try:
             base, api_key = resolve_endpoint_runtime(ep, owner=owner)
@@ -362,35 +572,37 @@ def resolve_endpoint_by_id(
         db.close()
 
 
-def resolve_chat_fallback_candidates(owner: Optional[str] = None) -> list:
+def resolve_chat_fallback_candidates(owner: Optional[str] = None, free_only: bool = False) -> list:
     """Build the configured default-chat fallback chain as a list of
     (chat_url, model, headers) tuples, skipping any that can't resolve.
 
     The primary model is NOT included — callers prepend their session's
     current (url, model, headers) so per-session model overrides are honored.
+
+    With free_only=True (or the kill-switch off) paid entries are dropped.
     """
-    return _resolve_fallback_candidates("default_model_fallbacks", owner=owner)
+    return _resolve_fallback_candidates("default_model_fallbacks", owner=owner, free_only=free_only)
 
 
-def resolve_utility_fallback_candidates(owner: Optional[str] = None) -> list:
+def resolve_utility_fallback_candidates(owner: Optional[str] = None, free_only: bool = False) -> list:
     """Configured fallback chain for the Utility model (`utility_model_fallbacks`)."""
     try:
         from src.settings import get_user_setting, load_settings
         settings = load_settings()
         utility_ep = (get_user_setting("utility_endpoint_id", owner or "", settings.get("utility_endpoint_id", "")) or "").strip()
         if not utility_ep:
-            return _resolve_fallback_candidates("default_model_fallbacks", owner=owner)
+            return _resolve_fallback_candidates("default_model_fallbacks", owner=owner, free_only=free_only)
     except Exception:
         pass
-    return _resolve_fallback_candidates("utility_model_fallbacks", owner=owner)
+    return _resolve_fallback_candidates("utility_model_fallbacks", owner=owner, free_only=free_only)
 
 
-def resolve_vision_fallback_candidates(owner: Optional[str] = None) -> list:
+def resolve_vision_fallback_candidates(owner: Optional[str] = None, free_only: bool = False) -> list:
     """Configured fallback chain for the Vision model (`vision_model_fallbacks`)."""
-    return _resolve_fallback_candidates("vision_model_fallbacks", owner=owner)
+    return _resolve_fallback_candidates("vision_model_fallbacks", owner=owner, free_only=free_only)
 
 
-def _resolve_fallback_candidates(setting_key: str, owner: Optional[str] = None) -> list:
+def _resolve_fallback_candidates(setting_key: str, owner: Optional[str] = None, free_only: bool = False) -> list:
     out = []
     try:
         from src.settings import get_user_setting, load_settings
@@ -401,7 +613,10 @@ def _resolve_fallback_candidates(setting_key: str, owner: Optional[str] = None) 
     for entry in chain:
         if not isinstance(entry, dict):
             continue
-        resolved = resolve_endpoint_by_id(entry.get("endpoint_id", ""), entry.get("model", ""), owner=owner)
+        resolved = resolve_endpoint_by_id(
+            entry.get("endpoint_id", ""), entry.get("model", ""),
+            owner=owner, free_only=free_only,
+        )
         if resolved:
             out.append(resolved)
     return out

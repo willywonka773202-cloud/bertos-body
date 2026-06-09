@@ -285,9 +285,10 @@ async def _auto_summarize_pass_single(days_back: int = 1, account_id: str | None
         if auto_spam and not spam_folder:
             logger.warning("Auto-spam enabled but no Junk/Spam folder detected — will classify but not move")
 
-        url, model, headers = resolve_endpoint("utility", owner=account_owner)
+        # Unattended email poller — force free/local (free_only=True).
+        url, model, headers = resolve_endpoint("utility", owner=account_owner, free_only=True)
         if not url:
-            url, model, headers = resolve_endpoint("default", owner=account_owner)
+            url, model, headers = resolve_endpoint("default", owner=account_owner, free_only=True)
         if not url or not model:
             return "No model configured"
 

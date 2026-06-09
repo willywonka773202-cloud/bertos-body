@@ -79,6 +79,37 @@ SEARXNG_INSTANCE = os.getenv("SEARXNG_INSTANCE", "http://localhost:8080")
 CLEANUP_ENABLED = os.getenv("CLEANUP_ENABLED", "True").lower() == "true"
 CLEANUP_INTERVAL_HOURS = int(os.getenv("CLEANUP_INTERVAL_HOURS", "24"))
 
+
+# ---------------------------------------------------------------------------
+# Free-first cost guardrail (BertOS)
+# ---------------------------------------------------------------------------
+# BERTOS_ALLOW_PAID is the global kill-switch for spending money on metered
+# external LLM providers. Default OFF ("0"): with the switch off, NO code path
+# — attended OR unattended — may dispatch to a PAID host (the guardrail in
+# src/endpoint_resolver + the fail-closed dispatch guard in src/llm_core
+# redirect/refuse paid endpoints). Set BERTOS_ALLOW_PAID=1 to permit attended
+# paid resolution. Background/unattended work is forced free regardless of this
+# flag (callers pass free_only=True).
+#
+# IMPORTANT: read this LIVE via allow_paid() — never cache it at import time —
+# so the kill-switch can hot-flip without a restart and tests can monkeypatch
+# os.environ. The module-level constant below is only a documented default and
+# is NOT consulted by the guardrail.
+_ALLOW_PAID_TRUE = ("1", "true", "yes", "on")
+
+
+def allow_paid() -> bool:
+    """Live read of the BERTOS_ALLOW_PAID kill-switch (default OFF).
+
+    Read at call time (not import time) so the switch hot-flips and tests can
+    monkeypatch os.environ. Returns True only when explicitly enabled.
+    """
+    return os.getenv("BERTOS_ALLOW_PAID", "0").strip().lower() in _ALLOW_PAID_TRUE
+
+
+# Documented default for reference/UI only — the guardrail uses allow_paid().
+ALLOW_PAID = allow_paid()
+
 # Default parameters
 DEFAULT_TEMPERATURE = 1.0
 DEFAULT_MAX_TOKENS = 0

@@ -132,7 +132,8 @@ async def run_auto_sort(owner: str, skip_llm: bool = False, delete_throwaway: bo
         if skip_llm:
             return f"Cleaned {deleted_empty + deleted_throwaway} sessions (folder sort skipped)."
 
-        url, model, headers = resolve_task_endpoint(owner=owner or None)
+        # Background session-sort sweep — force free/local (free_only=True).
+        url, model, headers = resolve_task_endpoint(owner=owner or None, free_only=True)
         if not url:
             return f"Cleaned {deleted_empty + deleted_throwaway} sessions. No model endpoint available for sorting."
 

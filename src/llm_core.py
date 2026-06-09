@@ -1090,6 +1090,27 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
              max_tokens: int = LLMConfig.DEFAULT_MAX_TOKENS, headers: Optional[Dict] = None, 
              timeout: int = LLMConfig.DEFAULT_TIMEOUT, prompt_type: Optional[str] = None) -> str:
     """Synchronous LLM call with optional prompt type enhancement."""
+    # ── Free-first cost guardrail (fail-CLOSED dispatch choke point) ──────────
+    # Mirror of the llm_call_async guard for the synchronous path (used by
+    # document_processor vision analysis). Blocks a KNOWN paid host when the
+    # kill-switch is off so no direct-build caller can spend on autopilot.
+    try:
+        from src.endpoint_resolver import _host_paid_blocked
+        if _host_paid_blocked(url, free_only=False):
+            from src.constants import allow_paid as _allow_paid
+            logger.error(
+                "[guardrail] BLOCKED paid dispatch to %s (BERTOS_ALLOW_PAID=%s) "
+                "via llm_call (sync)", _provider_label(url), _allow_paid(),
+            )
+            raise HTTPException(
+                402,
+                f"Paid provider {_provider_label(url)} blocked by free-first "
+                f"guardrail (set BERTOS_ALLOW_PAID=1 to allow paid).",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
     h = _provider_headers(_detect_provider(url))
     # Tolerate headers that arrive as a JSON string (some sessions stored them
     # double-encoded) — otherwise h.update() throws "dictionary update sequence
@@ -1248,6 +1269,29 @@ async def llm_call_async(
     prompt_type: Optional[str] = None
 ) -> str:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging."""
+    # ── Free-first cost guardrail (fail-CLOSED dispatch choke point) ──────────
+    # Every direct-build bypass caller (scheduler, _resolve_model, chat_helpers
+    # failover, webhook sync_chat, research, agent tools) funnels through here.
+    # When BERTOS_ALLOW_PAID is off and the target host is paid, refuse to spend
+    # — this catches even an un-enumerated leak. Read the switch LIVE.
+    try:
+        from src.endpoint_resolver import _host_paid_blocked
+        if _host_paid_blocked(url, free_only=False):
+            from src.constants import allow_paid as _allow_paid
+            logger.error(
+                "[guardrail] BLOCKED paid dispatch to %s (BERTOS_ALLOW_PAID=%s) "
+                "via llm_call_async", _provider_label(url), _allow_paid(),
+            )
+            raise HTTPException(
+                402,
+                f"Paid provider {_provider_label(url)} blocked by free-first "
+                f"guardrail (set BERTOS_ALLOW_PAID=1 to allow paid).",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+
     provider = _detect_provider(url)
     messages_copy = _sanitize_llm_messages(messages)
 
@@ -1408,6 +1452,28 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
       - event: error                       — errors
       - data: [DONE]                       — end of stream
     """
+    # ── Free-first cost guardrail (fail-CLOSED dispatch choke point) ──────────
+    # Mirror of the llm_call_async guard for the streaming path. When
+    # BERTOS_ALLOW_PAID is off and the target host is paid, emit an SSE error
+    # and stop rather than dispatching to a paid provider. Read the switch LIVE.
+    try:
+        from src.endpoint_resolver import _host_paid_blocked
+        _guard_blocked = _host_paid_blocked(url, free_only=False)
+    except Exception:
+        _guard_blocked = False
+    if _guard_blocked:
+        from src.constants import allow_paid as _allow_paid
+        logger.error(
+            "[guardrail] BLOCKED paid dispatch to %s (BERTOS_ALLOW_PAID=%s) "
+            "via stream_llm", _provider_label(url), _allow_paid(),
+        )
+        _gmsg = (
+            f"Paid provider {_provider_label(url)} blocked by free-first "
+            f"guardrail (set BERTOS_ALLOW_PAID=1 to allow paid)."
+        )
+        yield f'event: error\ndata: {json.dumps({"error": _gmsg, "status": 402})}\n\n'
+        return
+
     provider = _detect_provider(url)
     messages_copy = _sanitize_llm_messages(messages)
 

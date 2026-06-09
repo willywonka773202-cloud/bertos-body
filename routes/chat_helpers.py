@@ -227,10 +227,17 @@ def try_fallback_endpoint(sess, session_id: str) -> dict | None:
     finally:
         db.close()
 
+    from src.endpoint_resolver import _paid_blocked
+
     for ep in endpoints:
         base = normalize_base(ep.base_url)
         # Skip current endpoint
         if current_url and base in current_url:
+            continue
+        # Free-first guardrail: this mid-stream failover bypasses
+        # resolve_endpoint, so never fail over to a paid endpoint when the
+        # BERTOS_ALLOW_PAID kill-switch is off.
+        if _paid_blocked(ep, free_only=False):
             continue
         try:
             base, api_key = resolve_endpoint_runtime(ep, owner=owner)

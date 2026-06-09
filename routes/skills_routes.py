@@ -991,16 +991,20 @@ async def _run_audit_all_job(key, skills_manager, names, url, model, headers, te
         job.pop("task", None)
 
 
-def _resolve_audit_models(owner=None):
+def _resolve_audit_models(owner=None, free_only=False):
     """Resolve (url, model, headers, teacher) for an audit run from Settings.
 
     Worker = Utility model (falling back to Default, normalized to a served
     model id); teacher = the optional Settings → Teacher Model config. Shared
     by the manual /audit-all route and scheduled/event audits. Raises
     ValueError if no worker model.
+
+    free_only is True on the scheduled (unattended) audit path and False on the
+    interactive /audit-all route — it forces BOTH the worker and the teacher to
+    free/local providers so the nightly audit can never spend.
     """
     from src.endpoint_resolver import resolve_endpoint
-    url, model, headers = resolve_endpoint("utility", owner=owner)
+    url, model, headers = resolve_endpoint("utility", owner=owner, free_only=free_only)
     if not url or not model:
         raise ValueError("No model configured — set a Default or Utility model in Settings.")
     try:
@@ -1022,7 +1026,16 @@ def _resolve_audit_models(owner=None):
                 from src.ai_interaction import _resolve_model
                 t_url, t_model, t_headers = _resolve_model(spec, owner=owner)
                 if t_url and t_model:
-                    teacher = (t_url, t_model, t_headers)
+                    # Free-first guardrail: the teacher path bypasses
+                    # resolve_endpoint, so gate the resolved host directly.
+                    from src.endpoint_resolver import _host_paid_blocked
+                    if _host_paid_blocked(t_url, free_only=free_only):
+                        logger.info(
+                            "[guardrail] skipping paid audit teacher %s "
+                            "(free_only=%s)", t_url, free_only,
+                        )
+                    else:
+                        teacher = (t_url, t_model, t_headers)
     except Exception as e:
         logger.warning(f"Audit teacher resolve failed: {e}")
     return url, model, headers, teacher
@@ -1044,7 +1057,8 @@ async def run_scheduled_skill_audit(skills_manager: SkillsManager,
         return {"status": "running", "skipped": True}
 
     try:
-        url, model, headers, teacher = _resolve_audit_models(owner=owner)
+        # Scheduled (unattended) audit — force free/local (free_only=True).
+        url, model, headers, teacher = _resolve_audit_models(owner=owner, free_only=True)
     except ValueError as e:
         logger.info(f"Scheduled skill audit skipped — {e}")
         return {"status": "skipped", "reason": str(e)}

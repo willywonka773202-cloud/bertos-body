@@ -72,7 +72,18 @@ def _owned_enabled_endpoint(db, owner, endpoint_id=None):
     q = db.query(ModelEndpoint).filter(ModelEndpoint.is_enabled == True)  # noqa: E712
     if endpoint_id:
         q = q.filter(ModelEndpoint.id == endpoint_id)
-    return owner_filter(q, ModelEndpoint, owner).first()
+    ep = owner_filter(q, ModelEndpoint, owner).first()
+    # Free-first guardrail: this direct select bypasses resolve_endpoint, so
+    # refuse a paid endpoint when the BERTOS_ALLOW_PAID kill-switch is off
+    # (treat it as "not found" — same as a disabled endpoint).
+    if ep is not None:
+        try:
+            from src.endpoint_resolver import _paid_blocked
+            if _paid_blocked(ep, free_only=False):
+                return None
+        except Exception:
+            pass
+    return ep
 
 
 def _resolve_endpoint_runtime(ep, owner=None, model: Optional[str] = None):

@@ -182,22 +182,25 @@ _HIDDEN_SYSTEM_SESSION_NAMES = {
 
 
 def _pick_endpoint_for_sort(owner=None):
-    """Pick model endpoint for auto-sort LLM call — uses utility endpoint setting, falls back to default."""
+    """Pick model endpoint for auto-sort LLM call — uses utility endpoint setting, falls back to default.
+
+    Unattended background auto-sort — force free/local (free_only=True).
+    """
     from src.endpoint_resolver import resolve_endpoint
     # Try utility endpoint first (what the user configured for background tasks)
-    url, model, headers = resolve_endpoint("utility", owner=owner)
+    url, model, headers = resolve_endpoint("utility", owner=owner, free_only=True)
     if url and model:
         return url, model, headers
     # Fall back to task endpoint
     try:
         from src.task_endpoint import resolve_task_endpoint
-        url, model, headers = resolve_task_endpoint(owner=owner)
+        url, model, headers = resolve_task_endpoint(owner=owner, free_only=True)
         if url and model:
             return url, model, headers
     except Exception:
         pass
     # Fall back to default
-    url, model, headers = resolve_endpoint("default", owner=owner)
+    url, model, headers = resolve_endpoint("default", owner=owner, free_only=True)
     if url and model:
         return url, model, headers
     return None, None, None

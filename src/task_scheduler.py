@@ -1298,6 +1298,19 @@ class TaskScheduler:
             model = model or crew.model
         if not endpoint_url or not model:
             endpoint_url, model = self._resolve_defaults(db, task.owner)
+        # Free-first guardrail: a scheduled task is unattended, so a task/crew
+        # pinned to a PAID endpoint is refused even when BERTOS_ALLOW_PAID=1.
+        # Redirect to the configured free/local default instead of spending.
+        try:
+            from src.endpoint_resolver import _host_paid_blocked
+            if endpoint_url and _host_paid_blocked(endpoint_url, free_only=True):
+                logger.warning(
+                    "[guardrail] task %s pinned to paid endpoint — redirecting to "
+                    "free/local default", getattr(task, "id", "?"),
+                )
+                endpoint_url, model = self._resolve_defaults(db, task.owner)
+        except Exception:
+            pass
         if not endpoint_url or not model:
             raise RuntimeError("No model/endpoint configured")
         # Record the resolved model so _execute_task_locked can persist it on
@@ -1691,6 +1704,7 @@ class TaskScheduler:
                     model or None,
                     None,
                     owner=task.owner or None,
+                    free_only=True,  # unattended scheduler — force free/local
                 )
                 endpoint_url = ep_url or endpoint_url
                 model = ep_model or model
@@ -1830,16 +1844,37 @@ class TaskScheduler:
         return True  # too deep, treat as cycle
 
     def _resolve_defaults(self, db, owner):
-        """Find the first available endpoint + model from an existing session."""
+        """Find the first available endpoint + model from an existing session.
+
+        Free-first guardrail: scheduled tasks are unattended, so a paid
+        endpoint borrowed from the user's most-recent (possibly paid) chat
+        session is refused here. We scan recent sessions newest-first and pick
+        the first FREE one; only if none is free do we fall back to the
+        configured free/local default via resolve_endpoint(free_only=True).
+        This bypasses resolve_endpoint entirely, so the gate lives here.
+        """
         from core.database import Session as DbSession
         try:
-            recent = db.query(DbSession).filter(
+            from src.endpoint_resolver import _host_paid_blocked
+            recents = db.query(DbSession).filter(
                 DbSession.endpoint_url.isnot(None),
                 DbSession.model.isnot(None),
                 *([DbSession.owner == owner] if owner else []),
-            ).order_by(DbSession.created_at.desc()).first()
-            if recent:
+            ).order_by(DbSession.created_at.desc()).limit(25).all()
+            for recent in recents:
+                # free_only=True: never borrow a paid session endpoint for an
+                # unattended scheduled task.
+                if _host_paid_blocked(recent.endpoint_url, free_only=True):
+                    continue
                 return recent.endpoint_url, recent.model
+        except Exception:
+            pass
+        # No free session endpoint — resolve the configured default, free-only.
+        try:
+            from src.endpoint_resolver import resolve_endpoint
+            url, model, _ = resolve_endpoint("default", owner=owner, free_only=True)
+            if url and model:
+                return url, model
         except Exception:
             pass
         return None, None
