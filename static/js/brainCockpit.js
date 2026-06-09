@@ -375,6 +375,36 @@ async function suggest() {
   box.querySelectorAll('.cockpit-build-btn[data-obj]').forEach((b) => { b.onclick = () => prefillChat(`Automate this with the brain: ${b.dataset.obj}`); });
 }
 
+// ── Level Up — score the OS across the Four Cs + rank what to build next.
+// The research's compounding self-improvement loop, on demand. ──
+async function runAudit() {
+  const box = el('cockpit-audit'), btn = el('cockpit-audit-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Auditing your OS across the Four Cs… (free model, ~30s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '📊 Auditing…'; }
+  const r = await jget('/api/brain/audit');
+  if (btn) { btn.disabled = false; btn.textContent = '📊 Re-run self-audit'; }
+  if (!r || r.ok === false) { box.innerHTML = `<div class="cockpit-empty">Couldn't run the audit${r && r.code === 'BRAIN_ERROR' ? ' (update the brain)' : ''}.</div>`; return; }
+  const sc = r.scores;
+  const cs = [['Context', 'context'], ['Connections', 'connections'], ['Capabilities', 'capabilities'], ['Cadence', 'cadence']];
+  const bar = (label, key) => {
+    const v = sc && typeof sc[key] === 'number' ? Math.max(0, Math.min(100, sc[key])) : 0;
+    const col = v >= 75 ? '#3fd17a' : v >= 50 ? '#5884FF' : v >= 30 ? '#f0b429' : '#ff7a6b';
+    return `<div class="cockpit-audit-c"><span class="cockpit-audit-clabel">${label}</span><span class="cockpit-audit-ctrack"><span class="cockpit-audit-cfill" style="width:${v}%;background:${col}"></span></span><span class="cockpit-audit-cval">${v}</span></div>`;
+  };
+  box.innerHTML = `
+    ${sc ? `<div class="cockpit-audit-overall"><span class="cockpit-audit-score">${sc.overall ?? '—'}</span><span class="cockpit-audit-headline">${esc(r.headline || '')}</span></div>
+    <div class="cockpit-audit-bars">${cs.map(([l, k]) => bar(l, k)).join('')}</div>` : `<div class="cockpit-empty">${esc(r.headline || r.note || 'No scorecard available.')}</div>`}
+    ${(r.gaps || []).length ? `<div class="cockpit-audit-gaps-label">What to build next</div>` + r.gaps.map((g, i) => `
+      <div class="cockpit-audit-gap">
+        <div class="cockpit-audit-gap-top"><span class="cockpit-audit-gap-rank">${i + 1}</span><span class="cockpit-audit-gap-title">${esc(g.title || '')}</span><span class="cockpit-rec-impact i-${esc(g.impact || 'medium')}">${esc(g.impact || '')}</span></div>
+        ${g.why ? `<div class="cockpit-audit-gap-why">${esc(String(g.why).slice(0, 150))}</div>` : ''}
+        ${g.action ? `<button class="cockpit-build-btn" data-act="${esc(g.action)}">▶ ${esc(String(g.action).slice(0, 62))}</button>` : ''}
+      </div>`).join('') : ''}
+    ${r.model ? `<div class="cockpit-audit-foot">scored by ${esc(String(r.model).slice(0, 22))}</div>` : ''}`;
+  box.querySelectorAll('.cockpit-build-btn[data-act]').forEach((b) => { b.onclick = () => prefillChat(`Let's level up Bert's AI — help me with: ${b.dataset.act}`); });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const tab = document.querySelector('.memory-tab[data-memory-tab="cockpit"]');
   if (tab) tab.addEventListener('click', () => setTimeout(() => { render(false); startLive(); }, 30));
@@ -382,6 +412,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (rf) rf.onclick = () => render(true);
   const sg = el('cockpit-suggest-btn');
   if (sg) sg.onclick = suggest;
+  const ab = el('cockpit-audit-btn');
+  if (ab) ab.onclick = runAudit;
   // Stop the live poll when the Brain modal closes.
   document.getElementById('close-memory-modal')?.addEventListener('click', stopLive);
 });

@@ -37019,3 +37019,22 @@ body.theme-frosted .modal {
 .deck-subs-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 11px; border-radius: 9px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); }
 .deck-subs-vendor { font-size: 0.82rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .deck-subs-amt { font-size: 0.8rem; font-variant-numeric: tabular-nums; opacity: 0.85; flex: 0 0 auto; }
+
+/* ---- Mission Control: Level Up / self-audit ---- */
+.cockpit-audit:empty { display: none; }
+.cockpit-audit-overall { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.cockpit-audit-score { font-size: 2rem; font-weight: 750; letter-spacing: -1px; color: #5884FF; line-height: 1; }
+.cockpit-audit-headline { font-size: 0.82rem; opacity: 0.85; line-height: 1.35; }
+.cockpit-audit-bars { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.cockpit-audit-c { display: flex; align-items: center; gap: 9px; }
+.cockpit-audit-clabel { flex: 0 0 92px; font-size: 0.74rem; opacity: 0.85; }
+.cockpit-audit-ctrack { flex: 1 1 auto; height: 8px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; }
+.cockpit-audit-cfill { display: block; height: 100%; border-radius: 999px; transition: width 0.5s ease; }
+.cockpit-audit-cval { flex: 0 0 auto; width: 26px; text-align: right; font-size: 0.74rem; font-variant-numeric: tabular-nums; opacity: 0.8; }
+.cockpit-audit-gaps-label { font-size: 0.64rem; text-transform: uppercase; letter-spacing: 0.7px; opacity: 0.5; margin: 4px 0 6px; }
+.cockpit-audit-gap { border-radius: 11px; padding: 9px 12px; margin-bottom: 7px; background: rgba(88,132,255,0.05); border: 1px solid rgba(88,132,255,0.14); }
+.cockpit-audit-gap-top { display: flex; align-items: center; gap: 8px; }
+.cockpit-audit-gap-rank { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; background: rgba(88,132,255,0.2); color: #bcd0ff; font-size: 0.66rem; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.cockpit-audit-gap-title { flex: 1 1 auto; font-size: 0.82rem; font-weight: 600; }
+.cockpit-audit-gap-why { font-size: 0.74rem; opacity: 0.7; line-height: 1.4; margin: 4px 0 7px; }
+.cockpit-audit-foot { font-size: 0.66rem; opacity: 0.45; text-align: right; margin-top: 4px; }

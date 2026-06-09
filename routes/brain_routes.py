@@ -176,6 +176,80 @@ def setup_brain_routes() -> APIRouter:
         asyncio.create_task(_run())
         return {"ok": True, "started": True, "objective": objective[:120]}
 
+    @router.get("/audit")
+    async def brain_audit():
+        """Self-audit: score Bert's AI across the Four Cs (Context / Connections /
+        Capabilities / Cadence) and rank the highest-leverage gaps to build next.
+        The research's compounding self-improvement loop. Free model; fails soft."""
+        providers, projects, limits, graph, autojobs, deepjobs = await asyncio.gather(
+            _brain_get("/api/providers", 10.0),
+            _brain_get("/api/projects", 10.0),
+            _brain_get("/api/usage/limits", 10.0),
+            _brain_get("/api/memory/graph", 45.0),
+            _brain_get("/api/auto/jobs?limit=20", 10.0),
+            _brain_get("/api/deep/jobs?limit=20", 10.0),
+        )
+        engines = ((providers.get("data") or {}).get("providers") or []) if providers.get("ok") else []
+        online = [e for e in engines if e.get("online")]
+        subs = [e.get("label") or e.get("id") for e in online if e.get("paid") and not e.get("disabled")]
+        proj = projects.get("data") or [] if projects.get("ok") else []
+        buildable = [p for p in proj if p.get("localPath")]
+        lim = ((limits.get("data") or {}).get("summary") or {}) if limits.get("ok") else {}
+        counts = (((graph.get("data") or {}).get("graph") or {}).get("counts") or {}) if graph.get("ok") else {}
+        autos = autojobs.get("data") or [] if autojobs.get("ok") else []
+        builds = deepjobs.get("data") or [] if deepjobs.get("ok") else []
+        snapshot = (
+            f"ENGINES: {len(online)} online ({len(subs)} subscriptions: {', '.join(subs[:6]) or 'none'}); "
+            f"{lim.get('localOrFreeCalls24h', 0)} free + {lim.get('subscriptionCalls24h', 0)} sub calls in 24h.\n"
+            f"PROJECTS: {len(proj)} registered, {len(buildable)} buildable (with local paths).\n"
+            f"MEMORY: {counts.get('memories', 0)} memories, {counts.get('projects', 0)} projects, "
+            f"{counts.get('tags', 0)} tags, {counts.get('links', 0)} links in the knowledge graph.\n"
+            f"CADENCE: {len(autos)} Auto Mode loops, {len([b for b in builds if b.get('status') == 'done'])} completed Deep Builds.\n"
+            f"LIMITS: {lim.get('globalPercentUsed', 0)}% of daily soft-limit used, state={lim.get('globalState', '?')}. "
+            f"Warnings: {'; '.join((lim.get('warnings') or [])[:3]) or 'none'}."
+        )
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        url = model = None
+        try:
+            url, model, headers = resolve_endpoint("utility", free_only=True)
+            if not url:
+                url, model, headers = resolve_endpoint("default", free_only=True)
+        except Exception:
+            headers = {}
+        if not url or not model:
+            return {"ok": True, "snapshot": snapshot, "scores": None, "gaps": [], "note": "Configure a free model for the AI scorecard."}
+        prompt = (
+            "You audit a PERSONAL AI operating system ('Bert's AI'). Score it across the Four Cs, each 0-100, "
+            "based on the snapshot, then rank the TOP 5 highest-leverage gaps to build next (each with a concrete next action). "
+            "Four Cs: Context (what it knows about the user), Connections (data/APIs it reaches), Capabilities (skills/things it can produce), Cadence (autonomous scheduled work). "
+            "This OS is already strong (multi-engine orchestration, Deep Build, memory graph, automations). Be honest but calibrated. "
+            "Return ONLY JSON: {\"scores\":{\"context\":n,\"connections\":n,\"capabilities\":n,\"cadence\":n,\"overall\":n}, "
+            "\"headline\":\"one-line state of the OS\", "
+            "\"gaps\":[{\"title\":\"...\",\"pillar\":\"Context|Connections|Capabilities|Cadence\",\"why\":\"short\",\"action\":\"concrete next step\",\"impact\":\"high|medium|low\"}]}\n\n"
+            f"SNAPSHOT:\n{snapshot}"
+        )
+        try:
+            raw = await llm_call_async(url, model, [{"role": "user", "content": prompt}], headers=headers, max_tokens=1400)
+        except Exception as e:
+            logger.debug(f"audit llm failed: {e}")
+            return {"ok": True, "snapshot": snapshot, "scores": None, "gaps": [], "error": "ai_unavailable"}
+        import json as _json
+        import re as _re
+        parsed = None
+        try:
+            mch = _re.search(r"\{.*\}", (raw or "").strip(), _re.DOTALL)
+            if mch:
+                parsed = _json.loads(mch.group(0))
+        except Exception:
+            parsed = None
+        if not isinstance(parsed, dict):
+            return {"ok": True, "snapshot": snapshot, "scores": None, "gaps": [], "headline": (raw or "").strip()[:200], "model": model}
+        gaps = parsed.get("gaps") if isinstance(parsed.get("gaps"), list) else []
+        return {"ok": True, "snapshot": snapshot, "scores": parsed.get("scores"),
+                "headline": str(parsed.get("headline") or "")[:200],
+                "gaps": gaps[:6], "model": model}
+
     @router.post("/notify-test")
     async def brain_notify_test():
         """Send a test push to the configured channel (ntfy → phone) so the user
