@@ -183,7 +183,7 @@ const ADV_KEYS = [
   { key: 'aiBubbleBg',         css: '--ai-bubble-bg',      label: 'AI Chat Bubble',   group: 'Chat Bubbles' },
   { key: 'bubbleBorder',       css: '--bubble-border',     label: 'Border Chat Bubble', group: 'Chat Bubbles' },
   { key: 'sidebarBg',          css: '--sidebar-bg',        label: 'Sidebar Bg',       group: 'Sidebar' },
-  { key: 'brandColor',         css: '--brand-color',       label: 'Odysseus Logo',    group: 'Sidebar' },
+  { key: 'brandColor',         css: '--brand-color',       label: 'BertOS Logo',      group: 'Sidebar' },
   { key: 'hamburgerColor',     css: '--hamburger-color',   label: 'Hamburger Menu',   group: 'Sidebar' },
   { key: 'inputBg',            css: '--input-bg',          label: 'Input Bg',         group: 'Chat Input / Prompt Area' },
   { key: 'inputBorder',        css: '--input-border',      label: 'Input Border',     group: 'Chat Input / Prompt Area' },
@@ -194,23 +194,28 @@ const ADV_KEYS = [
   { key: 'toggleActive',       css: '--toggle-active',     label: 'Toggle On',        group: 'Controls' },
 ];
 
+// BertOS cobalt — the brand/accent identity. Kept distinct from the palette's
+// `red` (which stays for genuine error/danger states) so the UI reads as BertOS,
+// not the upstream's red-accent look.
+const BERT_ACCENT = '#5884FF';
+
 function computeAdvancedDefaults(colors) {
   const syn = deriveSyntaxColors(colors);
-  const red = colors.red || '#e06c75';
+  const accent = colors.accent || BERT_ACCENT;
   return {
     userBubbleBg: colors.bg,
     aiBubbleBg: colors.panel,
     bubbleBorder: colors.border,
     sidebarBg: colors.panel,
-    brandColor: red,
+    brandColor: accent,
     hamburgerColor: colors.fg,
     inputBg: colors.panel,
     inputBorder: colors.border,
-    sendBtnBg: red,
-    sendBtnHover: red,
+    sendBtnBg: accent,
+    sendBtnHover: accent,
     codeBg: syn.bg,
     codeFg: syn.fg,
-    toggleActive: red,
+    toggleActive: accent,
   };
 }
 
@@ -284,8 +289,10 @@ export function applyColors(colors) {
     s.setProperty(css, adv[key] || defaults[key]);
   }
 
-  // Update favicon to match theme accent color
-  _updateFavicon(colors.red || '#e06c75');
+  // Expose the BertOS accent as a CSS var so `var(--accent, …)` sites read
+  // cobalt (brand/links), and color the favicon to match.
+  s.setProperty('--accent', colors.accent || BERT_ACCENT);
+  _updateFavicon(colors.accent || BERT_ACCENT);
 }
 
 // Per-route SVG shape registry — kept in sync with the inline favicon

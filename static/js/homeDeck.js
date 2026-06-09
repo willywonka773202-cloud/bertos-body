@@ -175,6 +175,12 @@ function inject() {
   const anchor = document.getElementById('welcome-tip') || document.getElementById('welcome-sub');
   if (anchor && anchor.parentNode === ws) anchor.insertAdjacentElement('afterend', host);
   else ws.appendChild(host);
+  // The deck makes the welcome content tall — switch the welcome screen to a
+  // top-anchored, self-scrolling region that sits entirely above the chat input
+  // bar (CSS .has-deck), and drop the composer to the bottom (deck-mode) instead
+  // of its centered welcome position, so nothing overlaps on shorter windows.
+  ws.classList.add('has-deck');
+  document.getElementById('chat-container')?.classList.add('deck-mode');
   wire(host);
   injected = true;
   return true;

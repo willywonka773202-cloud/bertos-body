@@ -22,6 +22,9 @@
   --panel: #111;
   --border: #355a66;
   --red: #e06c75;
+  /* BertOS cobalt — the brand/accent identity (theme.js re-sets this per theme,
+     but this base keeps `var(--accent, …)` cobalt before/without JS). */
+  --accent: #5884FF;
   /* Were `var(--green)` / `var(--warn)` — self-referential, so they
      resolved to invalid and every site fell back to its own literal
      (or, for sites with no fallback, painted as transparent/inherit).
@@ -130,17 +133,17 @@ pre, code, .hljs {
     background: var(--panel);
   }
   ::-webkit-scrollbar-thumb {
-    background-color: var(--red);
+    background-color: var(--accent, var(--red));
     border-radius: 4px;
     border: 2px solid var(--panel);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: color-mix(in srgb, var(--red) 80%, white);
+    background-color: color-mix(in srgb, var(--accent, var(--red)) 80%, white);
   }
 }
 
 html {
-  scrollbar-color: var(--red) var(--panel);
+  scrollbar-color: var(--accent, var(--red)) var(--panel);
   scrollbar-width: thin;
 }
 
@@ -1841,6 +1844,31 @@ body.bg-pattern-sparkles {
       #welcome-screen { opacity: 0; pointer-events: none; }
     }
     #welcome-screen.hidden { display:none; }
+    /* When the HomeDeck is mounted, the welcome content is tall — anchor it to
+       the top and give it its own scroll area that ends above the chat input
+       bar, so the orb/cards/tiles never overlap the composer on short windows. */
+    #welcome-screen.has-deck {
+      top: 0;
+      transform: translateX(-50%);
+      height: calc(100% - 142px);
+      justify-content: flex-start;
+      padding-top: 3vh;
+      padding-bottom: 14px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      pointer-events: auto;
+      scrollbar-width: thin;
+      /* The base welcome-enter keyframe translates Y(-50%); its `both` fill
+         would override our top-anchored transform. Use an opacity-only entrance
+         so translateX(-50%) holds. */
+      animation: deck-welcome-in 0.4s ease both;
+    }
+    @keyframes deck-welcome-in { from { opacity: 0; } to { opacity: 1; } }
+    #welcome-screen.has-deck::-webkit-scrollbar { width: 7px; }
+    #welcome-screen.has-deck::-webkit-scrollbar-thumb { background: rgba(88,132,255,0.25); border-radius: 8px; }
+    @media (max-height: 500px) {
+      #welcome-screen.has-deck { padding-top: 1vh; }
+    }
     #welcome-screen.kb-hidden {
       opacity: 0;
       pointer-events: none;
@@ -1862,12 +1890,13 @@ body.bg-pattern-sparkles {
       letter-spacing:0.03em;
       margin-bottom:10px;
     }
-    .welcome-boat {
-      width: 1.8rem;
-      height: 1.8rem;
-      margin-right: 0.4rem;
-      vertical-align: -0.15em;
-      color: var(--brand-color, var(--red));
+    .welcome-mark {
+      width: 1.7rem;
+      height: 1.7rem;
+      margin-right: 0.45rem;
+      vertical-align: -0.18em;
+      color: var(--brand-color, var(--accent, #5884FF));
+      filter: drop-shadow(0 0 8px rgba(88,132,255,0.45));
     }
     #welcome-screen .welcome-sub {
       font-size:0.85rem;
@@ -1937,6 +1966,12 @@ body.bg-pattern-sparkles {
       margin-right:auto;
       max-width: 800px;
       width: 100%;
+    }
+    /* With the HomeDeck mounted, the welcome content is a full dashboard — keep
+       the composer at the bottom (not the centered welcome position) so the deck
+       has the room above it. */
+    .chat-container.deck-mode.welcome-active .chat-input-bar {
+      margin-bottom: 0;
     }
     @media (max-width:768px) {
       #welcome-screen .welcome-name { font-size:1.8rem; }
