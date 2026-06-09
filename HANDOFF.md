@@ -4,7 +4,7 @@
 - **Version:** 0.1.0
 - **Status:** building
 - **Updated:** 2026-06-08
-- **Next:** Slice 4 (daily brief → ntfy) — `action_daily_brief` already gathers cal/email/todos (no LLM); register a seeded cron task + wire its output to ntfy via in-process `dispatch_reminder`; stand up ntfy (no Docker → brew/alt channel). Then slice 2 memory→vault (LAST, SAFE app-owned partition; design+must-fixes in `docs/bertos/SLICE2-MEMORY-DESIGN-v2.md`). Live server: `uvicorn app:app` on http://127.0.0.1:7777.
+- **Next:** Slice 2 — memory→Obsidian-vault (the LAST Phase-1 slice; SAFE app-owned partition per `docs/bertos/SLICE2-MEMORY-DESIGN-v2.md` + its re-critique must-fixes — incl. the `delete_orphans` gate; backup the vault before first write; round-trip + restart-persistence tests are non-negotiable). Daily-brief delivery channel (self-hosted ntfy on the always-on host / ntfy.sh / in-app browser) pending the owner's choice; interim `reminder_channel=browser`. Live server: `uvicorn app:app` on http://127.0.0.1:7777.
 
 ---
 
@@ -18,6 +18,12 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-08 — Claude Code — build+check
+- **Slice 4 DONE & verified — daily brief → push.** `action_daily_brief` now pushes its digest via in-process `dispatch_reminder` (free_only=True); seeded a paused "Daily Brief" cron (07:00) in `HOUSEKEEPING_DEFAULTS`. Verification caught + fixed a REAL bug: the ntfy `Title` header carried a raw em-dash → `'ascii' codec` encode error that silently dropped EVERY push; now ASCII-sanitized (body stays full UTF-8).
+- Proven END-TO-END through the real scheduler: `ensure_defaults` seeds `daily_brief` (cron `0 7 * * *`) → `run_task_now` → **TaskRun=success** → **observed ntfy POST** captured on a local listener (path `/bertos-brief`, ASCII Title, UTF-8 body). The brief is honestly sparse now (no email/calendar configured) and fills in as the owner connects accounts.
+- ntfy from brew is client-only (no `serve`); the real phone-delivery channel (self-hosted ntfy on the always-on host / ntfy.sh / in-app browser) is the owner's call — flagged, not blocked. Interim `reminder_channel=browser`.
+- next: slice 2 — memory→vault (last Phase-1 slice).
 
 ### 2026-06-08 — Claude Code — build+check
 - **Slice 3 DONE & verified — free-first cost guardrail.** `is_paid` column + migration; `free_only` param + `BERTOS_ALLOW_PAID` kill-switch (default OFF, read LIVE); **fail-CLOSED guard at the `llm_core` dispatch choke point** (`llm_call` + `llm_call_async` + `stream_llm`) so no direct-build/bypass caller can spend; `free_only=True` threaded through all unattended sites; the 8 bypass leaks gated.
