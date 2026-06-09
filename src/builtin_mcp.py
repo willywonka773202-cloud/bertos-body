@@ -82,6 +82,29 @@ _BUILTIN_NPX_SERVERS = {
     },
 }
 
+# Node-based built-in server: the BertOS "brain" bridge (Phase 2). It lives in
+# the bertosV2 repo and talks HTTP to the running bertosV2 Next server (the
+# brain's Deep Build / Council / Auto Mode routes) — it never imports the brain
+# libs (they are `import "server-only"`) nor drives the daemon directly. The
+# server_id is "brain" (NOT "builtin_brain"): McpManager.is_builtin() keys off
+# the "builtin_" prefix, so "brain" is treated as a normal server and its tools
+# surface to function-calling as mcp__brain__* (the Python builtins use the
+# code-block tool format and are skipped from function-calling). The bridge
+# fails closed (clear brain_health message) when the brain host isn't running;
+# start it with `npm run bertos:host` in bertosV2. It is NEVER auto-spawned here.
+_BERTOS_BRAIN_DIR = os.path.expanduser(os.environ.get("BERTOS_BRAIN_DIR", "~/Documents/bertosV2"))
+_BUILTIN_NODE_SERVERS = {
+    "brain": {
+        "name": "BertOS Brain",
+        "script": os.path.join(_BERTOS_BRAIN_DIR, "scripts", "brain-mcp-server.mjs"),
+        "env": {
+            "BERTOS_BASE_URL": os.environ.get("BERTOS_BRAIN_BASE_URL", "http://127.0.0.1:3000"),
+            "BERTOS_DAEMON_URL": os.environ.get("BERTOS_BRAIN_DAEMON_URL", "http://127.0.0.1:4319"),
+            "BRAIN_ALLOW_PAID": os.environ.get("BERTOS_BRAIN_ALLOW_PAID", "0"),
+        },
+    },
+}
+
 # Global flag to disable MCP if there are compatibility issues
 MCP_DISABLED = os.environ.get("ODYSSEUS_DISABLE_MCP", "").lower() in ("1", "true", "yes")
 
@@ -121,6 +144,38 @@ async def register_builtin_servers(mcp_manager):
             logger.warning(f"Built-in MCP server script not found: {script_path}")
             continue
         asyncio.create_task(_connect_python_server(server_id, script_path, name))
+
+    # Node-based built-in: the BertOS brain bridge (Phase 2).
+    node_path = shutil.which("node") or "node"
+
+    async def _connect_node_server(server_id: str, cfg: dict):
+        script = cfg["script"]
+        if not os.path.exists(script):
+            logger.warning(
+                f"Brain MCP bridge not found at {script} — skipping. "
+                f"(Build it + run `npm run bertos:host` in bertosV2 to enable brain tools.)"
+            )
+            return
+        try:
+            ok = await mcp_manager.connect_server(
+                server_id=server_id,
+                name=cfg["name"],
+                transport="stdio",
+                command=node_path,
+                args=[script],
+                env=cfg.get("env"),
+            )
+            if ok:
+                logger.info(f"Brain MCP server registered: {cfg['name']}")
+            else:
+                logger.warning(f"Brain MCP server failed to connect: {cfg['name']}")
+        except asyncio.CancelledError:
+            raise
+        except BaseException as e:
+            logger.warning(f"Brain MCP server {cfg['name']} error: {type(e).__name__}: {e}")
+
+    for server_id, cfg in _BUILTIN_NODE_SERVERS.items():
+        asyncio.create_task(_connect_node_server(server_id, cfg))
 
     # Register NPX-based servers in the background (they take longer to start)
     npx_path = _find_npx()
