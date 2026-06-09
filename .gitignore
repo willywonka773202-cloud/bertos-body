@@ -89,3 +89,8 @@ docs/windows-port/
 compound.config.json
 *.error.log
 _scratch/
+
+# Migrated memory vault (lives inside the repo dir on the desktop; never track it)
+BertOS-Vault/
+data/auto-update.log
+setup-autodeploy.ps1
