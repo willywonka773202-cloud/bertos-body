@@ -1,8 +1,8 @@
 # HANDOFF — BertOS (Odysseus fork)
 
 <!-- State header: keep these 5 lines accurate. Claude reads this first each session and picks up from Next. -->
-- **Version:** 1.1.0
-- **Status:** LIVE + BRAIN INTEGRATED — 19 brain tools in the deployed body, subscriptions on
+- **Version:** 1.2.0
+- **Status:** LIVE + DEEP INTEGRATION — 22 brain tools + Memory Tree + Brain Cockpit (committed; redeploy the body to see the new UI on the desktop)
 - **Updated:** 2026-06-08
 - **Next:** **🎉 SHIPPED. BertOS runs 24/7 on the Windows desktop (`desktop-u3m3uq1`) in Docker, reachable Tailscale-only at `https://desktop-u3m3uq1.tail3ae957.ts.net` — confirmed opening on the phone.** All four daily-driver items live: daily brief → phone (ntfy, 7am armed), Gmail IMAP, Google CalDAV, and the deploy. Migration carried `data/` + `.app_key` + vault over Taildrop; in-container verification on the desktop: `auth/status` configured+authenticated, `config/accounts` has_password:true, `POST /api/calendar/sync` → `{calendars:2, events:35, errors:[]}`. Laptop instance stopped (desktop is the sole host → no double briefs). **Small owner follow-ups:** (1) restart Ollama after setting `OLLAMA_HOST=0.0.0.0` so the container reaches it for chat/models; (2) confirm Docker Desktop "start on login" is ON so it survives reboot. **Still open (unrelated):** bertosV2 route-level free-first kill-switch uncommitted in that repo's tree.
 
@@ -18,6 +18,11 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-09 — Claude Code — build+check (Brain Cockpit dashboard)
+- **Brain Cockpit: a new dashboard tab in the Brain panel** (committed `30f190b` + `7604a12`) — a command center for the integrated brain, complementing the chat. Sections: live status ("Brain online · N engines" with subscription chips lit green), Build targets (project grid + per-project "⚒ Build…" that prefills the chat), Recent brain activity (durable notes), Recent builds (Deep Build run history with status + committed count, via `/api/brain/deep-jobs`), and Ideas — an on-demand "✨ Suggest automations" that runs the brain's recommender (`/api/brain/recommend`) and shows 4–6 ranked, codebase-grounded automation ideas with "▶ Set up" buttons. All read-only via the body proxy; degrades gracefully on an older brain. **Verified live in preview** (19 engines, 17 projects, 8 build runs, 6 grounded recs; no console errors).
+- **REDEPLOY NEEDED:** the desktop is running the brain-integrated body from earlier tonight but NOT the Memory Tree / Cockpit / memory tools (committed after that rebuild). Re-ship `~/bertos-migration/bertos-code.tgz` (sha256 844e291c…, serve over Tailscale + curl as before) → extract over `C:\BertOS\odysseus` → `docker compose ... up -d --build`. The Memory Tree + Cockpit work best after the desktop **brain update** (BRAIN-UPDATE-DESKTOP.md) since the old brain lacks /api/memory/graph, /api/automations/recommend, /api/deep/jobs, etc.
+- next: optional polish (tree search/scope, header status pill); user redeploys body + updates brain.
 
 ### 2026-06-09 — Claude Code — build+check (deep integration: memory tools + Memory Tree UI)
 - **Memory tree linked into BertOS + visualized.** Bridge → 22 tools: added brain_memory_search (semantic recall → grounded brief), brain_memory_recent, brain_memory_graph (committed bertosV2 `d76a6d1`, vendored `822b480`). The chat can now mine the 723-memory / 3354-link knowledge base.
