@@ -131,7 +131,7 @@ def setup_brain_routes() -> APIRouter:
         return await _brain_get("/api/usage/limits", timeout=10.0)
 
     @router.post("/build")
-    async def brain_build(body: dict = Body(default_factory=dict)):
+    async def brain_build(body: dict = Body(default_factory=dict), owner: str = Depends(require_user)):
         """Fire a Deep Build in the BACKGROUND and return immediately.
 
         This is the Mission Control 'Build launcher'. It's a deliberate,
@@ -174,7 +174,7 @@ def setup_brain_routes() -> APIRouter:
                     title="Bert's AI",
                     note_body=f"{'✅' if ok_done else '⚠️'} Build {'finished' if ok_done else 'ended'}: {objective[:90]}",
                     note_id=f"build-{abs(hash(objective)) % 1000000}",
-                    owner="",
+                    owner=owner or "",
                 )
             except Exception as e:
                 logger.debug(f"build-done notify skipped: {e}")
@@ -591,16 +591,17 @@ def setup_brain_routes() -> APIRouter:
             return {"ok": False, "error": str(e)[:200]}
 
     @router.post("/notify-test")
-    async def brain_notify_test():
+    async def brain_notify_test(owner: str = Depends(require_user)):
         """Send a test push to the configured channel (ntfy → phone) so the user
-        can confirm proactive texts reach them."""
+        can confirm proactive texts reach them. Auth-gated + owner-scoped so it
+        routes via the caller's configured channel (not a shared/default one)."""
         try:
             from routes.note_routes import dispatch_reminder
             res = await dispatch_reminder(
                 title="Bert's AI",
                 note_body="🔔 Test ping — proactive texts are working.",
                 note_id="notify-test",
-                owner="",
+                owner=owner or "",
             )
             return {"ok": True, "dispatched": res}
         except Exception as e:

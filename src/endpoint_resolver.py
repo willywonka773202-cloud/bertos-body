@@ -38,11 +38,16 @@ _NON_CHAT_MODEL = (
 
 
 def _first_chat_model(models) -> Optional[str]:
-    """First model that isn't an embedding/tts/etc.; falls back to models[0]."""
+    """First model that isn't an embedding/tts/etc. Returns None when the list is
+    empty OR contains only non-chat models — callers must then fall back to their
+    configured fallback_model (or drop the endpoint), NEVER dispatch an embedding
+    model to a chat endpoint (which always fails). Do not "fall back to models[0]"
+    here: that silently re-introduces the embedding-as-chat bug this guard exists
+    to prevent (a host whose only model is bge-m3 would resolve to bge-m3)."""
     for m in (models or []):
         if not any(p in str(m).lower() for p in _NON_CHAT_MODEL):
             return m
-    return (models[0] if models else None)
+    return None
 
 
 def _endpoint_cached_models(ep) -> list:
