@@ -37009,3 +37009,13 @@ body.theme-frosted .modal {
 .cockpit-notify-test:hover:not(:disabled) { background: rgba(88,132,255,0.12); }
 .cockpit-notify-test:disabled { opacity: 0.6; cursor: default; }
 .cockpit-launch-hint { font-size: 0.68rem; opacity: 0.5; margin-top: 7px; }
+
+/* ---- HomeDeck helpers row + subscription tracker ---- */
+.deck-helpers { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.deck-subs-out { width: 100%; display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.deck-subs-out:empty { display: none; }
+.deck-subs-total { font-size: 0.92rem; text-align: center; margin-bottom: 6px; opacity: 0.95; }
+.deck-subs-total strong { color: #f0c861; }
+.deck-subs-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 6px 11px; border-radius: 9px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); }
+.deck-subs-vendor { font-size: 0.82rem; font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.deck-subs-amt { font-size: 0.8rem; font-variant-numeric: tabular-nums; opacity: 0.85; flex: 0 0 auto; }

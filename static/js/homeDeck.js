@@ -111,10 +111,12 @@ function shell() {
     </button>
   </div>
 
-  <div class="deck-digest" id="deck-digest">
+  <div class="deck-helpers">
     <button class="deck-digest-btn" id="deck-digest-btn">📥 Summarize my inbox</button>
-    <div class="deck-digest-out" id="deck-digest-out"></div>
+    <button class="deck-digest-btn" id="deck-subs-btn">💳 Track subscriptions</button>
   </div>
+  <div class="deck-digest-out" id="deck-digest-out"></div>
+  <div class="deck-digest-out" id="deck-subs-out"></div>
 
   <div class="deck-ticker-wrap" id="deck-ticker-wrap" style="display:none">
     <span class="deck-ticker-tag">live</span>
@@ -160,9 +162,33 @@ function wire(root) {
   // On-demand recommendation.
   const nb = root.querySelector('#deck-next-btn');
   if (nb) nb.onclick = suggestNext;
-  // On-demand inbox digest.
+  // On-demand inbox digest + subscription tracker.
   const db = root.querySelector('#deck-digest-btn');
   if (db) db.onclick = loadDigest;
+  const sb = root.querySelector('#deck-subs-btn');
+  if (sb) sb.onclick = loadSubs;
+}
+
+async function loadSubs() {
+  const out = document.getElementById('deck-subs-out');
+  const btn = document.getElementById('deck-subs-btn');
+  if (!out) return;
+  out.innerHTML = `<div class="deck-digest-loading">Bert's scanning your receipts… (free model, ~15s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '💳 Scanning…'; }
+  const r = await jget('/api/email/subscriptions', 90000);
+  if (btn) { btn.disabled = false; btn.textContent = '💳 Re-scan subscriptions'; }
+  if (!r || r.ok === false) { out.innerHTML = `<div class="deck-digest-empty">Couldn't scan right now.</div>`; return; }
+  const subs = r.subscriptions || [];
+  if (!subs.length) { out.innerHTML = `<div class="deck-digest-empty">No recurring subscriptions spotted in your recent mail${r.note ? ' (' + esc(r.note) + ')' : ''}.</div>`; return; }
+  const fmt = (s) => s.amount != null ? `${s.currency === 'USD' ? '$' : esc(s.currency) + ' '}${s.amount}${s.cadence === 'yearly' ? '/yr' : s.cadence === 'monthly' ? '/mo' : ''}` : '—';
+  out.innerHTML = `
+    <div class="deck-subs-total">≈ <strong>$${(r.monthly_estimate || 0).toLocaleString()}</strong>/mo across ${subs.length}</div>
+    ${subs.map((s) => `
+      <div class="deck-subs-row">
+        <span class="deck-subs-vendor">${esc(s.vendor || '?')}</span>
+        <span class="deck-subs-amt">${fmt(s)}</span>
+      </div>`).join('')}
+    <div class="deck-digest-foot">scanned ${r.scanned} recent emails${r.model ? ' · ' + esc(String(r.model).slice(0, 22)) : ''}</div>`;
 }
 
 async function loadDigest() {

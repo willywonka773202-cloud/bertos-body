@@ -1109,6 +1109,88 @@ def setup_email_routes():
         _digest_cache[key] = (now, out)
         return out
 
+    # Subscription tracker — scan recent mail for recurring charges (streaming,
+    # SaaS, memberships), extract via a FREE model, estimate monthly burn.
+    _subs_cache: dict = {}
+
+    @router.get("/subscriptions")
+    async def email_subscriptions(refresh: int = Query(0), owner: str = Depends(require_owner)):
+        key = owner or ""
+        now = _time.time()
+        if not refresh:
+            hit = _subs_cache.get(key)
+            if hit and now - hit[0] < 86400:  # subscriptions change slowly — 1d cache
+                return {**hit[1], "cached": True}
+        try:
+            res = await _asyncio.to_thread(
+                _list_emails_sync, "INBOX", 150, 0, "all", None, None, False, owner
+            )
+            emails = (res or {}).get("emails") or []
+        except Exception as e:
+            return {"ok": False, "error": "inbox_unavailable", "detail": str(e)[:150]}
+        if not emails:
+            return {"ok": True, "subscriptions": [], "monthly_estimate": 0, "scanned": 0}
+        lines = []
+        for m in emails[:150]:
+            frm = (m.get("from_address") or m.get("from_name") or "?")[:48]
+            subj = (m.get("subject") or "")[:90]
+            lines.append(f"[{frm}] {subj}")
+        listing = "\n".join(lines)
+        from src.endpoint_resolver import resolve_endpoint
+        url = model = None
+        try:
+            url, model, headers = resolve_endpoint("utility", owner=owner, free_only=True)
+            if not url:
+                url, model, headers = resolve_endpoint("default", owner=owner, free_only=True)
+        except Exception:
+            headers = {}
+        if not url or not model:
+            return {"ok": True, "subscriptions": [], "monthly_estimate": 0, "scanned": len(emails), "note": "Configure a free model in Settings for AI extraction."}
+        prompt = (
+            "From these email sender+subject lines, identify the user's RECURRING PAID subscriptions "
+            "(streaming, SaaS, apps, memberships, hosting — things billed monthly or yearly). "
+            "Ignore one-off purchases, shipping notices, marketing. Dedupe by vendor. Return ONLY JSON:\n"
+            '{"subscriptions": [{"vendor": "...", "amount": <number or null>, "currency": "USD", '
+            '"cadence": "monthly|yearly|unknown", "evidence": "short subject snippet"}], '
+            '"monthly_estimate": <number, sum of monthly-equivalent amounts you are confident about>}\n\n'
+            "EMAILS:\n" + listing
+        )
+        try:
+            raw = await llm_call_async(url, model, [{"role": "user", "content": prompt}], headers=headers, max_tokens=1100)
+        except Exception as e:
+            logger.debug(f"subs llm failed: {e}")
+            return {"ok": True, "subscriptions": [], "monthly_estimate": 0, "scanned": len(emails), "error": "ai_unavailable"}
+        import json as _json3
+        import re as _re3
+        parsed = None
+        try:
+            mch = _re3.search(r"\{.*\}", (raw or "").strip(), _re3.DOTALL)
+            if mch:
+                parsed = _json3.loads(mch.group(0))
+        except Exception:
+            parsed = None
+        subs = (parsed or {}).get("subscriptions") if isinstance(parsed, dict) else None
+        if not isinstance(subs, list):
+            subs = []
+        # Clean + clamp
+        clean = []
+        for s in subs[:40]:
+            if not isinstance(s, dict):
+                continue
+            clean.append({
+                "vendor": str(s.get("vendor") or "")[:40],
+                "amount": s.get("amount") if isinstance(s.get("amount"), (int, float)) else None,
+                "currency": str(s.get("currency") or "USD")[:5],
+                "cadence": s.get("cadence") if s.get("cadence") in ("monthly", "yearly", "unknown") else "unknown",
+                "evidence": str(s.get("evidence") or "")[:70],
+            })
+        monthly = (parsed or {}).get("monthly_estimate") if isinstance(parsed, dict) else None
+        if not isinstance(monthly, (int, float)):
+            monthly = sum((s["amount"] or 0) / (12 if s["cadence"] == "yearly" else 1) for s in clean if s["amount"])
+        out = {"ok": True, "subscriptions": clean, "monthly_estimate": round(monthly, 2), "scanned": len(emails), "model": model}
+        _subs_cache[key] = (now, out)
+        return out
+
     @router.post("/{uid}/unflag-spam")
     async def unflag_spam(uid: str, owner: str = Depends(require_owner)):
         """User override — mark email as not spam."""
