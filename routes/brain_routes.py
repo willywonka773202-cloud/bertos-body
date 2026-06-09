@@ -102,4 +102,10 @@ def setup_brain_routes() -> APIRouter:
         Slow (runs a free model) — call on demand, not on dashboard open."""
         return await _brain_get("/api/automations/recommend", timeout=130.0)
 
+    @router.get("/usage")
+    async def brain_usage():
+        """Per-engine call/token usage + the free-vs-paid routing split — the
+        proof the orchestrator keeps work cheap (freeShare%, paidTokens, etc.)."""
+        return await _brain_get("/api/usage", timeout=10.0)
+
     return router

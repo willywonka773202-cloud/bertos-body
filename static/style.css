@@ -36732,3 +36732,27 @@ body.theme-frosted .modal {
   .deck-pulse { grid-template-columns: repeat(2, 1fr); }
   #home-deck.home-deck { width: 92vw; }
 }
+
+/* ---- Cockpit Fleet: engine usage + free-vs-paid routing split ---- */
+.cockpit-fleet-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 9px; flex-wrap: wrap; }
+.cockpit-fleet-hero { font-size: 0.82rem; opacity: 0.85; }
+.cockpit-fleet-hero-num { font-size: 1.35rem; font-weight: 750; letter-spacing: -0.5px; color: #3fd17a; margin-right: 3px; }
+.cockpit-fleet-hero strong { color: #3fd17a; }
+.cockpit-fleet-tot { font-size: 0.7rem; opacity: 0.55; }
+.cockpit-split { display: flex; height: 9px; border-radius: 999px; overflow: hidden; background: rgba(255,255,255,0.05); }
+.cockpit-split-free { background: linear-gradient(90deg, #3fd17a, #34b566); }
+.cockpit-split-paid { background: linear-gradient(90deg, #f0b429, #e0992a); }
+.cockpit-split-legend { display: flex; justify-content: space-between; font-size: 0.66rem; opacity: 0.6; margin: 6px 1px 12px; }
+.cockpit-split-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.cockpit-split-key { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.cockpit-split-key.free { background: #3fd17a; } .cockpit-split-key.paid { background: #f0b429; }
+.cockpit-fleet-bars { display: flex; flex-direction: column; gap: 6px; }
+.cockpit-fleet-row { display: flex; align-items: center; gap: 9px; }
+.cockpit-fleet-name { flex: 0 0 92px; font-size: 0.74rem; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cockpit-fleet-tag { font-size: 0.54rem; text-transform: uppercase; letter-spacing: 0.4px; color: #f0b429; background: rgba(240,180,41,0.14); border-radius: 4px; padding: 1px 4px; }
+.cockpit-fleet-track { flex: 1 1 auto; height: 7px; border-radius: 999px; background: rgba(255,255,255,0.045); overflow: hidden; }
+.cockpit-fleet-fill { display: block; height: 100%; border-radius: 999px; }
+.cockpit-fleet-fill.free { background: linear-gradient(90deg, rgba(63,209,122,0.55), #3fd17a); }
+.cockpit-fleet-fill.paid { background: linear-gradient(90deg, rgba(240,180,41,0.5), #f0b429); }
+.cockpit-fleet-num { flex: 0 0 auto; font-size: 0.72rem; font-variant-numeric: tabular-nums; opacity: 0.85; min-width: 52px; text-align: right; }
+.cockpit-fleet-calls { opacity: 0.45; margin-left: 5px; font-size: 0.64rem; }

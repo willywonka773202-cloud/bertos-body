@@ -108,12 +108,57 @@ async function render(force) {
   const body = el('cockpit-body');
   if (body && !loaded) body.classList.remove('cockpit-hidden');
   el('cockpit-status') && (el('cockpit-status').innerHTML = '<div class="cockpit-loading">Connecting to your brain…</div>');
-  const [status, projects, recent, jobs] = await Promise.all([
-    jget('/api/brain/status'), jget('/api/brain/projects'),
+  const [status, fleet, projects, recent, jobs] = await Promise.all([
+    jget('/api/brain/status'), jget('/api/brain/usage'), jget('/api/brain/projects'),
     jget('/api/brain/memory/recent?limit=12'), jget('/api/brain/deep-jobs?limit=8'),
   ]);
   loaded = true; loading = false;
-  renderStatus(status); renderProjects(projects); renderRecent(recent); renderBuilds(jobs);
+  renderStatus(status); renderFleet(fleet); renderProjects(projects); renderRecent(recent); renderBuilds(jobs);
+}
+
+// ── Fleet: how the orchestrator routes work across engines, and the
+// free-vs-paid token split (the proof it keeps spend cheap). ──
+function fmtTokens(t) {
+  t = Number(t) || 0;
+  if (t >= 1e6) return (t / 1e6).toFixed(t >= 1e7 ? 0 : 1) + 'M';
+  if (t >= 1e3) return Math.round(t / 1e3) + 'k';
+  return String(t);
+}
+function renderFleet(f) {
+  const box = el('cockpit-fleet'); if (!box) return;
+  if (!f || f.ok === false) {
+    box.innerHTML = `<div class="cockpit-empty">Usage unavailable${f && f.code === 'BRAIN_ERROR' ? ' (update the brain to enable)' : ''}.</div>`;
+    return;
+  }
+  const d = f.data || {};
+  const models = (d.models || []).slice().sort((a, b) => (b.tokens || 0) - (a.tokens || 0));
+  const total = d.totalTokens || models.reduce((s, m) => s + (m.tokens || 0), 0) || 1;
+  const freePct = typeof d.freeSharePct === 'number' ? d.freeSharePct
+    : typeof d.freeShare === 'number' ? d.freeShare
+    : Math.round(100 * (1 - (d.paidTokens || 0) / total));
+  const paidPct = Math.max(0, 100 - freePct);
+  const top = models.slice(0, 6);
+  const maxTok = top.length ? (top[0].tokens || 1) : 1;
+  const bars = top.map((m) => {
+    const w = Math.max(2, Math.round(100 * (m.tokens || 0) / maxTok));
+    const cls = m.paid ? 'paid' : 'free';
+    return `<div class="cockpit-fleet-row">
+      <span class="cockpit-fleet-name">${esc(ENGINE_LABEL[m.id] || m.id)}${m.paid ? '<span class="cockpit-fleet-tag">paid</span>' : ''}</span>
+      <span class="cockpit-fleet-track"><span class="cockpit-fleet-fill ${cls}" style="width:${w}%"></span></span>
+      <span class="cockpit-fleet-num">${fmtTokens(m.tokens)}<span class="cockpit-fleet-calls">${m.calls || 0}×</span></span>
+    </div>`;
+  }).join('');
+  box.innerHTML = `
+    <div class="cockpit-fleet-head">
+      <div class="cockpit-fleet-hero"><span class="cockpit-fleet-hero-num">${freePct}%</span> of work runs <strong>free</strong></div>
+      <div class="cockpit-fleet-tot">${fmtTokens(total)} tokens · ${(d.models || []).length} engines</div>
+    </div>
+    <div class="cockpit-split" title="${freePct}% free · ${paidPct}% paid">
+      <span class="cockpit-split-free" style="width:${freePct}%"></span>
+      <span class="cockpit-split-paid" style="width:${paidPct}%"></span>
+    </div>
+    <div class="cockpit-split-legend"><span><span class="cockpit-split-key free"></span>free ${freePct}%</span><span><span class="cockpit-split-key paid"></span>paid ${paidPct}%${d.claudeTokens ? ' · Claude ' + fmtTokens(d.claudeTokens) : ''}</span></div>
+    <div class="cockpit-fleet-bars">${bars}</div>`;
 }
 
 const JOB_STATUS = { running: '#f0b429', done: '#3fd17a', error: '#ff7a6b', interrupted: '#9aa4b2' };
