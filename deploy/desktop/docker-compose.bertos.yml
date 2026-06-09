@@ -1,0 +1,34 @@
+# BertOS desktop overlay — merge ON TOP of the base stack:
+#
+#   docker compose -f docker-compose.yml -f deploy/desktop/docker-compose.bertos.yml up -d --build
+#
+# The base docker-compose.yml already drives ports, the Ollama host, and the
+# auth flags from .env. This overlay only adds what the base file does NOT
+# pass through for a BertOS single-user deploy:
+#   - the memory vault bind mount (app memory's source of truth), and
+#   - the BertOS-specific env (single-user owner + optional brain bridge).
+#
+# Compose merges same-named services: the volumes below are APPENDED to the
+# base list and the environment keys are MERGED in.
+services:
+  odysseus:
+    volumes:
+      # Memory vault — the human-readable source of truth for app memory.
+      # Point BERTOS_VAULT_DIR at the migrated vault (default: ./BertOS-Vault
+      # next to the repo). BERTOS_OBSIDIAN_VAULT=/vault makes the app write here.
+      - ${BERTOS_VAULT_DIR:-./BertOS-Vault}:/vault:z
+      # OPTIONAL brain tools (Deep Build / Council via MCP). Uncomment this
+      # mount AND the two BERTOS_BRAIN_* lines below, only if the bertosV2
+      # brain runs on this host. The body boots fine without it.
+      # - ${BERTOS_BRAIN_DIR_HOST:-../bertosV2}:/brain:ro
+    environment:
+      # Memory vault lives at the bind-mount path above. (BERTOS_OBSIDIAN_VAULT
+      # is the env var the app actually reads — see src/constants.py.)
+      - BERTOS_OBSIDIAN_VAULT=/vault
+      # Single-user owner reconciliation — keep calendar/CalDAV on the same ""
+      # owner as email/memory/brief. Empty value (not unset) is intentional.
+      - ODYSSEUS_FALLBACK_OWNER=${ODYSSEUS_FALLBACK_OWNER:-}
+      # OPTIONAL brain tools — reach the native bertosV2 Next server on the
+      # Windows host. Uncomment BERTOS_BRAIN_DIR together with the /brain mount.
+      # - BERTOS_BRAIN_DIR=/brain
+      - BERTOS_BRAIN_BASE_URL=${BERTOS_BRAIN_BASE_URL:-http://host.docker.internal:3000}
