@@ -36991,3 +36991,16 @@ body.theme-frosted .modal {
 .deck-digest-why { font-size: 0.7rem; opacity: 0.6; margin-top: 2px; }
 .deck-digest-fyi { margin: 3px 0 0; padding-left: 18px; font-size: 0.76rem; opacity: 0.78; line-height: 1.5; }
 .deck-digest-foot { font-size: 0.68rem; opacity: 0.5; text-align: center; margin-top: 4px; }
+
+/* ---- Mission Control build launcher ---- */
+.cockpit-launcher { border-radius: 13px; padding: 12px 14px; margin-bottom: 10px; background: linear-gradient(160deg, rgba(88,132,255,0.08), rgba(88,132,255,0.02)); border: 1px solid rgba(88,132,255,0.18); }
+.cockpit-launcher:empty { display: none; }
+.cockpit-launch-head { font-size: 0.8rem; font-weight: 650; margin-bottom: 8px; color: #bcd0ff; }
+.cockpit-launch-select { width: 100%; background: var(--panel, #161b22); color: var(--text, #e8eaed); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 7px 10px; font-size: 0.8rem; margin-bottom: 7px; cursor: pointer; }
+.cockpit-launch-obj { width: 100%; box-sizing: border-box; background: var(--panel, #161b22); color: var(--text, #e8eaed); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 8px 10px; font-size: 0.82rem; line-height: 1.4; resize: vertical; font-family: inherit; }
+.cockpit-launch-obj:focus { outline: none; border-color: rgba(88,132,255,0.5); }
+.cockpit-launch-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.cockpit-launch-fire { font-size: 0.82rem; font-weight: 650; color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; background: linear-gradient(135deg, #5884FF, #7a5bff); border: 1px solid rgba(255,255,255,0.16); box-shadow: 0 5px 16px -8px rgba(88,132,255,0.8); transition: transform 0.14s ease; }
+.cockpit-launch-fire:hover:not(:disabled) { transform: translateY(-1px); }
+.cockpit-launch-fire:disabled { opacity: 0.6; cursor: default; }
+.cockpit-launch-status { font-size: 0.74rem; opacity: 0.8; }

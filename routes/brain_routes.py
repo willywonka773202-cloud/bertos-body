@@ -9,10 +9,14 @@ return `{ok: false, code: "BRAIN_DOWN", ...}` with HTTP 200 so the UI can show a
 friendly "start your brain" state instead of erroring. The brain base URL is the
 same one the MCP bridge uses (BERTOS_BRAIN_BASE_URL).
 """
+import asyncio
+import logging
 import os
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Body
+
+logger = logging.getLogger(__name__)
 
 _BRAIN_BASE = os.environ.get("BERTOS_BRAIN_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
 
@@ -119,5 +123,43 @@ def setup_brain_routes() -> APIRouter:
         """Usage limits + health summary (daily soft-limit, % used, active model,
         auto role engines, warnings) — powers the 'seeing my limits' view."""
         return await _brain_get("/api/usage/limits", timeout=10.0)
+
+    @router.post("/build")
+    async def brain_build(body: dict = Body(default_factory=dict)):
+        """Fire a Deep Build in the BACKGROUND and return immediately.
+
+        This is the Mission Control 'Build launcher'. It's a deliberate,
+        user-initiated action (the click + confirm IS the approval gate for the
+        patches/git/paid-calls Deep Build performs) — so it's allowed to spend
+        the brain's subscriptions, unlike unattended automations. The brain's
+        Deep Build registers a job that the live 'Now Running' panel surfaces, so
+        the user watches it there; we only need to keep the upstream stream alive
+        so the build runs to completion.
+        """
+        objective = str((body or {}).get("objective") or "").strip()
+        project_id = str((body or {}).get("projectId") or "").strip()
+        if not objective:
+            return {"ok": False, "error": "An objective is required."}
+        if not project_id:
+            return {"ok": False, "error": "A project is required."}
+
+        async def _run():
+            try:
+                timeout = httpx.Timeout(1800.0, connect=10.0)
+                async with httpx.AsyncClient(timeout=timeout) as client:
+                    async with client.stream(
+                        "POST", _BRAIN_BASE + "/api/deep/run",
+                        json={"objective": objective, "projectId": project_id},
+                    ) as resp:
+                        # Drain the SSE stream so the upstream build isn't cancelled
+                        # by an early client disconnect; the live job state is read
+                        # from /api/brain/deep-jobs by Mission Control.
+                        async for _ in resp.aiter_lines():
+                            pass
+            except Exception as e:  # background task — log, never raise
+                logger.warning(f"brain build background run failed: {e}")
+
+        asyncio.create_task(_run())
+        return {"ok": True, "started": True, "objective": objective[:120]}
 
     return router

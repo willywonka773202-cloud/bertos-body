@@ -11,6 +11,10 @@ async function jget(path) {
   try { const r = await fetch(API + path, { cache: 'no-store' }); return await r.json(); }
   catch (e) { return { ok: false, code: 'NET', error: String(e) }; }
 }
+async function jpost(path, body) {
+  try { const r = await fetch(API + path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) }); return await r.json(); }
+  catch (e) { return { ok: false, error: String(e) }; }
+}
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m])); }
 function el(id) { return document.getElementById(id); }
 
@@ -127,8 +131,56 @@ async function render(force) {
     jget('/api/brain/limits'),
   ]);
   loaded = true; loading = false;
-  renderNow(jobs, auto); renderLimits(limits);
+  renderNow(jobs, auto); renderLauncher(projects); renderLimits(limits);
   renderStatus(status); renderFleet(fleet); renderProjects(projects); renderAuto(auto); renderRecent(recent); renderBuilds(jobs);
+}
+
+// ── Build launcher — fire a Deep Build on a project right from Mission Control.
+// The click + confirm IS the approval gate (Deep Build patches + commits + may
+// spend a subscription), so it never fires unattended. Shows live in Now Running.
+let _launchProj = null; // remember the chosen project across refreshes
+function renderLauncher(projectsRes) {
+  const box = el('cockpit-launcher'); if (!box) return;
+  const projects = (projectsRes && projectsRes.ok !== false) ? (projectsRes.data || []) : [];
+  const buildable = projects.filter((p) => p.localPath && p.id);
+  if (!buildable.length) { box.innerHTML = ''; return; }
+  // Don't blow away an in-progress typed objective on a 5s auto-refresh.
+  const existingObj = el('cockpit-launch-obj');
+  if (existingObj && document.activeElement === existingObj) return;
+  const typed = existingObj ? existingObj.value : '';
+  const sel = el('cockpit-launch-proj');
+  if (sel) _launchProj = sel.value;
+  const opts = buildable.map((p) => `<option value="${esc(p.id)}"${_launchProj === p.id ? ' selected' : ''}>${esc(p.name)}</option>`).join('');
+  box.innerHTML = `
+    <div class="cockpit-launch-head">⚒ Launch a build</div>
+    <select id="cockpit-launch-proj" class="cockpit-launch-select">${opts}</select>
+    <textarea id="cockpit-launch-obj" class="cockpit-launch-obj" rows="2" placeholder="What should Bert build or fix? e.g. “add a dark-mode toggle, then commit”">${esc(typed)}</textarea>
+    <div class="cockpit-launch-actions">
+      <button id="cockpit-launch-fire" class="cockpit-launch-fire">🚀 Build it</button>
+      <span class="cockpit-launch-status" id="cockpit-launch-status"></span>
+    </div>`;
+  const fire = el('cockpit-launch-fire');
+  if (fire) fire.onclick = fireBuild;
+}
+async function fireBuild() {
+  const proj = el('cockpit-launch-proj'); const obj = el('cockpit-launch-obj');
+  const status = el('cockpit-launch-status'); const fire = el('cockpit-launch-fire');
+  const objective = (obj && obj.value || '').trim();
+  const projectId = proj && proj.value;
+  const projName = (proj && proj.options[proj.selectedIndex] && proj.options[proj.selectedIndex].text) || 'this project';
+  if (!objective) { if (status) status.textContent = 'Type what to build first.'; obj && obj.focus(); return; }
+  if (!window.confirm(`Build in “${projName}”:\n\n“${objective}”\n\nBert will edit + commit code using your subscriptions. Start it?`)) return;
+  if (fire) { fire.disabled = true; fire.textContent = '🚀 Starting…'; }
+  if (status) status.textContent = '';
+  const r = await jpost('/api/brain/build', { objective, projectId });
+  if (fire) { fire.disabled = false; fire.textContent = '🚀 Build it'; }
+  if (r && r.ok && r.started) {
+    if (status) status.textContent = '✓ Started — watch it in “Now Running” above.';
+    if (obj) obj.value = '';
+    setTimeout(() => render(true), 800);
+  } else {
+    if (status) status.textContent = (r && r.error) || 'Could not start the build.';
+  }
 }
 
 // ── "Now Running" hero — everything happening across the brain this second:
