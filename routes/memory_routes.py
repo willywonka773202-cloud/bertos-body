@@ -538,8 +538,10 @@ def setup_memory_routes(memory_manager: MemoryManager, session_manager: SessionM
             raise HTTPException(404, f"Memory item {memory_id} not found")
         _verify_memory_owner(target, user)
 
-        all_mem = [m for m in all_mem if m["id"] != memory_id]
-        memory_manager.save(all_mem)
+        # Genuine delete path: unlink EXACTLY this id (race-safe locked
+        # delete-by-id) instead of delete-by-absence, so a concurrently-added
+        # note is never collaterally orphaned.
+        memory_manager.delete([memory_id])
         # Sync vector index
         if memory_vector and memory_vector.healthy:
             memory_vector.remove(memory_id)

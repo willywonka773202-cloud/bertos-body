@@ -239,7 +239,10 @@ class NativeMemoryProvider(MemoryProvider):
         if deleted_id is None:
             return False
 
-        self.memory_manager.save(remaining)
+        # Genuine delete path: unlink EXACTLY this id (race-safe locked
+        # delete-by-id) instead of delete-by-absence, so a concurrently-added
+        # note is never collaterally orphaned.
+        self.memory_manager.delete([deleted_id])
         if self._vector_available():
             self.memory_vector.remove(deleted_id)
         return True

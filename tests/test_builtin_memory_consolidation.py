@@ -16,14 +16,23 @@ def _import_consolidate_action():
 
 
 def _write_memories(tmp_path, memories):
+    # Seed through the MemoryManager API: the vault-backed rewrite made
+    # data/memory.json a dead stub, so the store of truth is the app
+    # partition (Memory/bertos/*.md), not the JSON file. Writing entries via
+    # save() keeps this test backend-agnostic.
+    from src.memory import MemoryManager
+
     data_dir = tmp_path / "data"
     data_dir.mkdir()
-    (data_dir / "memory.json").write_text(json.dumps(memories), encoding="utf-8")
+    mgr = MemoryManager(str(data_dir))
+    mgr.save(list(memories))
     return data_dir
 
 
 def _read_memories(data_dir):
-    return json.loads((data_dir / "memory.json").read_text(encoding="utf-8"))
+    from src.memory import MemoryManager
+
+    return MemoryManager(str(data_dir)).load_all()
 
 
 @pytest.mark.asyncio

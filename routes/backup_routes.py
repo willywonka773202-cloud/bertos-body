@@ -95,7 +95,9 @@ def setup_backup_routes(memory_manager, preset_manager, skills_manager) -> APIRo
                 existing.append(mem)
                 existing_texts.add(mem["text"].strip().lower())
                 added += 1
-            memory_manager.save(existing)
+            # Backup import is merge/upsert-only — must never delete the
+            # importing user's existing notes (delete_orphans defaults False).
+            memory_manager.save(existing, delete_orphans=False)
             imported.append(f"{added} memories")
 
         # ── Skills ──

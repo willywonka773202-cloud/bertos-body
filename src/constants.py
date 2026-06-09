@@ -15,6 +15,22 @@ DATA_DIR = os.getenv("ODYSSEUS_DATA_DIR", os.path.join(BASE_DIR, "data"))
 # re-deriving paths from __file__ or a relative "data" literal.
 SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
 MEMORY_FILE = os.path.join(DATA_DIR, "memory.json")
+
+# ---------------------------------------------------------------------------
+# Vault-backed memory (Slice 2) — app-owned partition of the Obsidian vault.
+# ---------------------------------------------------------------------------
+# MEMORY_APP_DIR is the ONE AND ONLY folder the memory engine reads, writes,
+# or unlinks. It is a single sub-partition (`Memory/bertos/`) of the user's
+# real Obsidian vault. Every glob/read/write/unlink the app does is rooted
+# here and never escapes it — the ~721 human/agent notes in the other 33
+# partitions are structurally unreachable. Do NOT mirror these into
+# core/constants.py (that file is a `from src.constants import *` shim;
+# mirroring re-creates the drift it exists to kill).
+MEMORY_VAULT_DIR = os.getenv(
+    "BERTOS_OBSIDIAN_VAULT", os.path.expanduser("~/Documents/BertOS-Vault")
+)
+MEMORY_APP_PARTITION = "bertos"  # app-owned; never collides with the 721 notes
+MEMORY_APP_DIR = os.path.join(MEMORY_VAULT_DIR, "Memory", MEMORY_APP_PARTITION)
 MEMORY_DOC = os.path.join(DATA_DIR, "memory_doc.md")
 PERSONAL_DIR = os.path.join(DATA_DIR, "personal_docs")
 RUNBOOK_DIR = os.path.join(PERSONAL_DIR, "runbook")

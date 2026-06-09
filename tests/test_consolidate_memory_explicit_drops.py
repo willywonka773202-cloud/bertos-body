@@ -12,6 +12,7 @@ import src.builtin_actions as ba
 
 class _FakeMM:
     saved = None
+    deleted = None
 
     def __init__(self, *args, **kwargs):
         pass
@@ -23,8 +24,16 @@ class _FakeMM:
             {"id": "c", "owner": "alice", "text": "Lives in Cairo", "category": "fact"},
         ]
 
-    def save(self, entries):
+    def save(self, entries, **kwargs):
+        # save() gained an optional delete_orphans kwarg in the vault-backed
+        # rewrite; accept and ignore it here.
         _FakeMM.saved = list(entries)
+
+    def delete(self, ids):
+        # consolidate now removes explicit drops via the locked delete-by-id
+        # path (save upserts the full set; delete removes only the dropped ids).
+        _FakeMM.deleted = list(ids)
+        return len(_FakeMM.deleted)
 
 
 def test_omitted_memory_survives_only_explicit_drop(monkeypatch):
@@ -36,7 +45,7 @@ def test_omitted_memory_survives_only_explicit_drop(monkeypatch):
     monkeypatch.setattr(src.memory, "MemoryManager", _FakeMM)
     monkeypatch.setattr(
         src.endpoint_resolver, "resolve_endpoint",
-        lambda kind, owner=None: ("http://x/v1", "model", {}),
+        lambda kind, owner=None, free_only=False: ("http://x/v1", "model", {}),
     )
 
     async def fake_llm(**kwargs):
@@ -51,7 +60,11 @@ def test_omitted_memory_survives_only_explicit_drop(monkeypatch):
     msg, ok = asyncio.run(ba.action_consolidate_memory("alice"))
 
     assert ok, msg
-    ids = {m["id"] for m in _FakeMM.saved}
-    assert "c" in ids, "omitted memory must NOT be deleted"
-    assert "a" in ids
-    assert "b" not in ids, "explicitly dropped memory should be removed"
+    # Final state = everything upserted by save(), minus the ids removed by the
+    # locked delete-by-id call. Omitted 'c' survives; explicitly-dropped 'b' is gone.
+    saved_ids = {m["id"] for m in (_FakeMM.saved or [])}
+    deleted_ids = set(_FakeMM.deleted or [])
+    final = saved_ids - deleted_ids
+    assert "c" in final, "omitted memory must NOT be deleted"
+    assert "a" in final
+    assert "b" not in final, "explicitly dropped memory should be removed"

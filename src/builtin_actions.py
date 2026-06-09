@@ -82,6 +82,10 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
 
         manager = MemoryManager(DATA_DIR)
         all_memories = manager.load_all()
+        # Snapshot the full id set BEFORE dedup so we can compute exactly which
+        # ids were dropped and unlink only those (race-safe delete-by-id),
+        # instead of delete-by-absence which would orphan concurrent additions.
+        original_ids = {m.get("id") for m in all_memories if m.get("id")}
 
         _owner_clean = (owner or "").strip()
         text_limit = 2000
@@ -271,7 +275,17 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             total_removed += group_removed
 
         if total_removed or total_cleaned:
-            manager.save(all_memories)
+            # consolidate_memory genuinely removes duplicates: `all_memories`
+            # has had the dropped entries filtered out. Upsert the survivors
+            # (so text/category edits persist) WITHOUT delete-by-absence, then
+            # unlink EXACTLY the dropped ids via the race-safe locked
+            # delete-by-id. This way a note added concurrently between load and
+            # save is neither rewritten away nor orphaned.
+            surviving_ids = {m.get("id") for m in all_memories if m.get("id")}
+            removed_ids = [mid for mid in original_ids if mid not in surviving_ids]
+            manager.save(all_memories, delete_orphans=False)
+            if removed_ids:
+                manager.delete(removed_ids)
             if ai_used:
                 reasons = ai_reasons[:3]
                 reason_text = f": {'; '.join(reasons)}" if reasons else ""

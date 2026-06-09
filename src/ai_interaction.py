@@ -1067,10 +1067,13 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
                 full_id = m["id"]
                 delete_id = m["id"]
                 break
-        memories = [m for m in memories if m.get("id") != delete_id]
-        if len(memories) == original_len:
+        remaining = [m for m in memories if m.get("id") != delete_id]
+        if len(remaining) == original_len:
             return {"error": f"Memory '{memory_id}' not found"}
-        _memory_manager.save(memories)
+        # Genuine delete path: unlink EXACTLY this id (race-safe locked
+        # delete-by-id) instead of delete-by-absence, so a concurrently-added
+        # note is never collaterally orphaned.
+        _memory_manager.delete([delete_id])
 
         # Remove from vector index
         if _memory_vector and full_id and hasattr(_memory_vector, 'healthy') and _memory_vector.healthy:

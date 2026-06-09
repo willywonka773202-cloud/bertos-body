@@ -460,7 +460,8 @@ async def extract_and_store(
             added += 1
 
         if added > 0:
-            memory_manager.save(existing)
+            # Extract is append/upsert-only — never deletes existing notes.
+            memory_manager.save(existing, delete_orphans=False)
             try:
                 from src.event_bus import fire_event
                 for _ in range(added):
@@ -636,7 +637,11 @@ async def audit_memories(
             saved_entries = final_entries + other_entries
         else:
             saved_entries = final_entries
-        memory_manager.save(saved_entries)
+        # MUST-FIX (re-critique HIGH): the audit can save a FILTERED slice
+        # (esp. the owner=None branch). It must be UPSERT-ONLY — an entry the
+        # LLM merged out or omitted is left on disk, NOT mass-deleted. Only the
+        # genuine delete paths pass delete_orphans=True.
+        memory_manager.save(saved_entries, delete_orphans=False)
         logger.info(
             f"Memory audit complete: {before_count} -> {after_count} entries "
             f"({before_count - after_count} removed/merged)"

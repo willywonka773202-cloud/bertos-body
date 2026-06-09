@@ -163,8 +163,10 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 break
         if not full_id:
             return [TextContent(type="text", text=f"Error: Memory '{memory_id}' not found")]
-        memories = [m for m in memories if m.get("id") != full_id]
-        _memory_manager.save(memories)
+        # Genuine delete path: unlink EXACTLY this id (race-safe locked
+        # delete-by-id) instead of delete-by-absence, so a concurrently-added
+        # note is never collaterally orphaned.
+        _memory_manager.delete([full_id])
         if _memory_vector and _memory_vector.healthy and full_id:
             try:
                 _memory_vector.remove(full_id)

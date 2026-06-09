@@ -120,7 +120,10 @@ class MemoryService:
         if len(remaining) == len(memories):
             return False
 
-        self.manager.save(remaining)
+        # Genuine delete path: unlink EXACTLY this id (race-safe locked
+        # delete-by-id) instead of delete-by-absence, so a concurrently-added
+        # note is never collaterally orphaned.
+        self.manager.delete([memory_id])
         if self.vector_store and self.vector_store.healthy:
             self.vector_store.remove(memory_id)
         return True

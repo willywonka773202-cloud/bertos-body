@@ -28,7 +28,9 @@ def _setup(monkeypatch, store, user="alice"):
     mem = MagicMock()
     mem.load_all.return_value = list(store)
     saved = {}
-    mem.save.side_effect = lambda entries: saved.__setitem__("entries", entries)
+    # save() gained an optional delete_orphans kwarg in the vault-backed
+    # rewrite; accept and ignore it here (backup import is upsert-only).
+    mem.save.side_effect = lambda entries, **kw: saved.__setitem__("entries", entries)
 
     skills = MagicMock()
     skills.load_all.return_value = []
