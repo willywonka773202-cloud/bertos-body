@@ -28,6 +28,7 @@ const state = {
   links: [],
   byId: new Map(),
   filters: { memory: true, project: true, tag: true },
+  query: '',
   view: { x: 0, y: 0, scale: 1 },
   alive: 0, // frames of remaining "heat"
   hover: null,
@@ -90,6 +91,11 @@ function buildModel(graph) {
 
 function radius(n) { return Math.max(3, Math.min(22, 3 + Math.sqrt(n.degree) * 2.4)); }
 function visible(n) { return state.filters[n.type] !== false; }
+function nodeMatches(n, q) {
+  return (n.label && n.label.toLowerCase().includes(q)) ||
+    (n.preview && n.preview.toLowerCase().includes(q)) ||
+    (Array.isArray(n.tags) && n.tags.some((t) => String(t).toLowerCase().includes(q)));
+}
 
 // ── force simulation (one tick) ──────────────────────────────────────────────
 function tick() {
@@ -150,6 +156,7 @@ function draw() {
   ctx.scale(state.view.scale, state.view.scale);
 
   const hl = state.hover || state.pinned;
+  const q = state.query;
   const neigh = new Set();
   if (hl) { neigh.add(hl.id); for (const l of state.links) { if (l.s === hl) neigh.add(l.t.id); if (l.t === hl) neigh.add(l.s.id); } }
 
@@ -166,15 +173,16 @@ function draw() {
     if (!visible(n)) continue;
     const st = TYPE_STYLE[n.type] || TYPE_STYLE.default;
     const r = radius(n);
-    const dim = hl && !neigh.has(n.id);
-    ctx.globalAlpha = dim ? 0.18 : 1;
-    if (!dim && (n === hl || r > 9)) {
-      ctx.shadowColor = st.glow; ctx.shadowBlur = n === hl ? 22 : 10;
+    const hit = q && nodeMatches(n, q);
+    const dim = (hl && !neigh.has(n.id)) || (q && !hit);
+    ctx.globalAlpha = dim ? 0.1 : 1;
+    if (!dim && (n === hl || hit || r > 9)) {
+      ctx.shadowColor = hit ? '#ffffff' : st.glow; ctx.shadowBlur = (n === hl || hit) ? 20 : 10;
     } else { ctx.shadowBlur = 0; }
     ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
     ctx.fillStyle = st.fill; ctx.fill();
     ctx.shadowBlur = 0;
-    if (n === hl) { ctx.lineWidth = 2 / state.view.scale; ctx.strokeStyle = '#fff'; ctx.stroke(); }
+    if (n === hl || hit) { ctx.lineWidth = 2 / state.view.scale; ctx.strokeStyle = '#fff'; ctx.stroke(); }
     ctx.globalAlpha = 1;
   }
   // labels for hubs / hovered
@@ -377,6 +385,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const tab = document.querySelector('.memory-tab[data-memory-tab="tree"]');
   if (tab) tab.addEventListener('click', () => setTimeout(() => render(false), 30));
   wireLegend();
+  const search = document.getElementById('mtree-search');
+  if (search) {
+    search.addEventListener('input', () => { state.query = search.value.trim().toLowerCase(); });
+    search.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && state.query && state.canvas) {
+        const m = state.nodes.find((n) => visible(n) && nodeMatches(n, state.query));
+        if (m) {
+          const W = state.canvas.clientWidth, H = state.canvas.clientHeight;
+          state.view.scale = Math.max(1.1, state.view.scale);
+          state.view.x = W / 2 - m.x * state.view.scale;
+          state.view.y = H / 2 - m.y * state.view.scale;
+          state.pinned = m; renderDetail();
+        }
+      }
+    });
+  }
 });
 
 const memoryTree = { render };
