@@ -476,6 +476,107 @@ async function runLint() {
     ${r.model ? `<div class="cockpit-audit-foot">linted by ${esc(String(r.model).slice(0, 22))}</div>` : ''}`;
 }
 
+// ── Weekly Review — the state-of-the-OS week (research P1.4): 7-day rollup
+// of builds/commits/memories/auto runs + AI headline, wins and priorities. ──
+async function runWeekly() {
+  const box = el('cockpit-weekly'), btn = el('cockpit-weekly-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Rolling up your week… (free model, ~30s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '📈 Reviewing…'; }
+  const r = await jget('/api/brain/weekly-review');
+  if (btn) { btn.disabled = false; btn.textContent = '📈 Re-run weekly review'; }
+  if (!r || r.ok === false) { box.innerHTML = `<div class="cockpit-empty">Couldn't build the review${r && r.code === 'BRAIN_ERROR' ? ' (update the brain)' : ''}.</div>`; return; }
+  const ru = r.rollup || {};
+  const chip = (label, val, warn) => `<span class="cockpit-lint-stat${warn && val ? ' warn' : ''}">${esc(String(val ?? 0))}<span class="cockpit-lint-statlabel">${esc(label)}</span></span>`;
+  const list = (title, items, icon) => (items && items.length)
+    ? `<div class="cockpit-audit-gaps-label">${esc(title)}</div><div class="cockpit-weekly-list">${items.map((w) => `<div class="cockpit-weekly-item">${icon} ${esc(String(w).slice(0, 160))}</div>`).join('')}</div>`
+    : '';
+  box.innerHTML = `
+    ${r.headline ? `<div class="cockpit-levelup-headline">📈 ${esc(String(r.headline).slice(0, 200))}</div>` : ''}
+    <div class="cockpit-lint-stats">
+      ${chip('builds', ru.buildsDone)}
+      ${chip('failed', ru.buildsFailed, true)}
+      ${chip('commits', ru.commits)}
+      ${chip('memories', ru.newMemories)}
+      ${chip('auto ok', ru.autoRunsOk)}
+      ${chip('auto failed', ru.autoRunsFailed, true)}
+      ${chip('engines', ru.enginesOnline)}
+    </div>
+    ${(r.topProjects || []).length ? `<div class="cockpit-audit-gaps-label">Top projects this week</div><div class="cockpit-weekly-projects">${r.topProjects.map((t) => `<span class="cockpit-weekly-proj">${esc(String(t.name || '').slice(0, 40))} <b>${esc(String(t.builds ?? 0))}</b></span>`).join('')}</div>` : ''}
+    ${list('Wins', r.wins, '🏆')}
+    ${list('Next week', r.priorities, '→')}
+    <div class="cockpit-weekly-actions"><button id="cockpit-weekly-push" class="cockpit-build-btn">📲 Send to my phone</button></div>
+    <div class="cockpit-audit-foot">${r.mode === 'ai' && r.model ? `reviewed by ${esc(String(r.model).slice(0, 22))}` : 'deterministic rollup · last 7 days'}</div>`;
+  const pb = box.querySelector('#cockpit-weekly-push');
+  if (pb) pb.onclick = async () => {
+    pb.disabled = true; pb.textContent = '📲 Sending…';
+    const res = await jpost('/api/brain/weekly-review/push', {});
+    if (res && res.ok) { pb.disabled = false; pb.textContent = '✓ Sent to your phone'; }
+    else { pb.disabled = false; pb.textContent = '⚠ Failed — retry'; }
+  };
+}
+
+// ── Connector Check-in — every connector's health at a glance (research
+// P1.4): brain, engines, limits, memory, email, calendar, push. Fully
+// deterministic on the backend (no LLM), so it's fast. ──
+async function runCheckup() {
+  const box = el('cockpit-checkup'), btn = el('cockpit-checkup-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Pinging your connectors…</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '🩺 Checking…'; }
+  const r = await jget('/api/brain/checkup');
+  if (btn) { btn.disabled = false; btn.textContent = '🩺 Re-run check-in'; }
+  if (!r || r.ok === false || !Array.isArray(r.checks)) { box.innerHTML = `<div class="cockpit-empty">Couldn't run the check-in.</div>`; return; }
+  const s = r.summary || {};
+  const parts = [];
+  if (s.ok) parts.push(`${s.ok} ok`);
+  if (s.warn) parts.push(`${s.warn} warn`);
+  if (s.down) parts.push(`${s.down} down`);
+  box.innerHTML = `
+    <div class="cockpit-checkup-summary">${esc(parts.join(' · ') || 'no checks ran')}</div>
+    ${r.checks.map((c) => {
+      const st = ['ok', 'warn', 'down'].includes(c.status) ? c.status : 'down';
+      return `<div class="cockpit-checkup-row">
+        <span class="cockpit-checkup-dot ${st}"></span>
+        <span class="cockpit-checkup-name">${esc(String(c.name || '').slice(0, 24))}</span>
+        <span class="cockpit-checkup-detail">${esc(String(c.detail || '').slice(0, 140))}</span>
+      </div>`;
+    }).join('')}
+    <div class="cockpit-audit-foot">live probe · deterministic, no AI</div>`;
+}
+
+// ── Deploy pre-flight — pre-ship checklist (research P1.4): git state,
+// syntax gates, brain reachability, env sanity. Deterministic on the
+// backend (no LLM); on the deployed container git/node checks show as skip. ──
+async function runDeployPrep() {
+  const box = el('cockpit-deploy'), btn = el('cockpit-deploy-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Running pre-flight checks…</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '🚦 Checking…'; }
+  const r = await jget('/api/brain/deploy-prep');
+  if (btn) { btn.disabled = false; btn.textContent = '🚦 Re-run pre-flight'; }
+  if (!r || r.ok === false || !Array.isArray(r.checks)) { box.innerHTML = `<div class="cockpit-empty">Couldn't run the pre-flight.</div>`; return; }
+  const s = r.summary || {};
+  const parts = [];
+  if (s.ok) parts.push(`${s.ok} ok`);
+  if (s.warn) parts.push(`${s.warn} warn`);
+  if (s.skip) parts.push(`${s.skip} skipped`);
+  box.innerHTML = `
+    <div class="cockpit-deploy-verdict ${r.ready ? 'ready' : 'hold'}">
+      ${r.ready ? 'READY ✅' : 'CHECK FIRST ⚠'}
+      <span class="cockpit-deploy-counts">${esc(parts.join(' · ') || 'no checks ran')}</span>
+    </div>
+    ${r.checks.map((c) => {
+      const st = ['ok', 'warn', 'skip'].includes(c.status) ? c.status : 'skip';
+      return `<div class="cockpit-checkup-row cockpit-deploy-row">
+        <span class="cockpit-checkup-dot ${st}"></span>
+        <span class="cockpit-checkup-name">${esc(String(c.name || '').slice(0, 24))}</span>
+        <span class="cockpit-checkup-detail">${esc(String(c.detail || '').slice(0, 140))}</span>
+      </div>`;
+    }).join('')}
+    <div class="cockpit-audit-foot">local checks · deterministic, no AI</div>`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const tab = document.querySelector('.memory-tab[data-memory-tab="cockpit"]');
   if (tab) tab.addEventListener('click', () => setTimeout(() => { render(false); startLive(); }, 30));
@@ -491,6 +592,12 @@ document.addEventListener('DOMContentLoaded', () => {
   if (lb) lb.onclick = runLint;
   const hb = el('cockpit-hot-btn');
   if (hb) hb.onclick = runHot;
+  const wb = el('cockpit-weekly-btn');
+  if (wb) wb.onclick = runWeekly;
+  const cub = el('cockpit-checkup-btn');
+  if (cub) cub.onclick = runCheckup;
+  const dpb = el('cockpit-deploy-btn');
+  if (dpb) dpb.onclick = runDeployPrep;
   // Stop the live poll when the Brain modal closes.
   document.getElementById('close-memory-modal')?.addEventListener('click', stopLive);
 });
