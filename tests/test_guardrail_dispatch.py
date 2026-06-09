@@ -1,10 +1,15 @@
-"""Integration proof for the free-first cost guardrail's fail-CLOSED dispatch guard.
+"""Integration proof for the free-first cost guardrail's fail-CLOSED dispatch guards.
 
-Every LLM dispatch in the app funnels through `llm_call` / `llm_call_async`
-(the leak-hunt confirmed all background/scheduled paths terminate there), so
-proving the guard blocks at this choke point proves no path can spend on a
-KNOWN paid host on autopilot. We assert the network is NEVER touched for a
-blocked call — trusting the dispatched call, not a log line.
+Two independent dispatch paths can reach a paid host:
+  1. LLM generation — every call funnels through `llm_call` / `llm_call_async`
+     (the leak-hunt confirmed all background/scheduled paths terminate there).
+  2. Embeddings — `EmbeddingClient.encode()` POSTs directly to EMBEDDING_URL for
+     RAG/memory indexing (a SEPARATE choke point that never touches llm_call).
+
+Proving the guard blocks at BOTH choke points proves no path — chat OR
+unattended embedding — can spend on a KNOWN paid host on autopilot. We assert
+the network is NEVER touched for a blocked call — trusting the dispatched call,
+not a log line.
 """
 
 import httpx
@@ -12,11 +17,15 @@ import pytest
 from fastapi import HTTPException
 
 import src.llm_core as llm_core
+from src.embeddings import EmbeddingClient
 from src.endpoint_resolver import _host_paid_blocked
 
 PAID_URL = "https://api.openai.com/v1/chat/completions"
 LOCAL_URL = "http://localhost:8000/v1/chat/completions"   # vLLM-style, known-free
 MSGS = [{"role": "user", "content": "hi"}]
+
+PAID_EMBED_URL = "https://api.openai.com/v1/embeddings"    # text-embedding-3-*
+LOCAL_EMBED_URL = "http://localhost:11434/v1/embeddings"   # native Ollama, known-free
 
 
 class _FakeResp:
@@ -72,3 +81,49 @@ def test_sync_dispatch_allows_local_even_when_switch_off(monkeypatch):
 
     out = llm_core.llm_call(LOCAL_URL, "qwen", MSGS)
     assert out == "local-ok"                    # local host is never blocked
+
+
+# --- the embedding dispatch path: blocked paid never touches the network ----
+
+class _FakeEmbedResp:
+    """Mimics the OpenAI-style embeddings response EmbeddingClient.encode reads."""
+
+    def __init__(self, vec):
+        self._vec = vec
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return {"data": [{"embedding": self._vec, "index": 0}]}
+
+
+def test_embedding_encode_blocks_paid_without_network(monkeypatch):
+    monkeypatch.delenv("BERTOS_ALLOW_PAID", raising=False)   # default OFF
+    client = EmbeddingClient(url=PAID_EMBED_URL, model="text-embedding-3-small")
+
+    def _boom(*a, **k):
+        raise AssertionError("embedding POST MUST NOT fire for a blocked paid host")
+
+    monkeypatch.setattr(client._client, "post", _boom)
+
+    with pytest.raises(RuntimeError, match="guardrail"):
+        client.encode(["hello"])                # unattended RAG/memory indexing
+
+
+def test_embedding_encode_allows_paid_when_opted_in(monkeypatch):
+    monkeypatch.setenv("BERTOS_ALLOW_PAID", "1")
+    client = EmbeddingClient(url=PAID_EMBED_URL, model="text-embedding-3-small")
+    monkeypatch.setattr(client._client, "post", lambda *a, **k: _FakeEmbedResp([0.1, 0.2]))
+
+    vecs = client.encode(["hello"], normalize_embeddings=False)
+    assert vecs.shape == (1, 2)                 # reached the network → guard allowed it
+
+
+def test_embedding_encode_allows_local_when_switch_off(monkeypatch):
+    monkeypatch.delenv("BERTOS_ALLOW_PAID", raising=False)
+    client = EmbeddingClient(url=LOCAL_EMBED_URL, model="all-minilm")
+    monkeypatch.setattr(client._client, "post", lambda *a, **k: _FakeEmbedResp([0.3, 0.4]))
+
+    vecs = client.encode(["hello"], normalize_embeddings=False)
+    assert vecs.shape == (1, 2)                 # local host is never blocked

@@ -31,13 +31,13 @@ def test_auto_compaction_utility_endpoint_keeps_chat_owner():
 
     assert "owner=user" in helper_src
     assert "owner: Optional[str] = None" in compact_src
-    assert 'resolve_endpoint("utility", owner=owner)' in compact_src
+    assert 'resolve_endpoint("utility", owner=owner, free_only=True)' in compact_src
 
 
 def test_background_session_sort_uses_owner_task_endpoint():
     src = _src("src/session_actions.py")
 
-    assert "resolve_task_endpoint(owner=owner or None)" in src
+    assert "resolve_task_endpoint(owner=owner or None, free_only=True)" in src
 
 
 def test_scheduler_fallbacks_and_research_headers_are_owner_scoped():
