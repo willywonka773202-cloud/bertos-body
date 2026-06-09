@@ -21,9 +21,19 @@ logger = logging.getLogger(__name__)
 # never an embedding/tts/etc. (an OpenAI-style endpoint often lists
 # `text-embedding-ada-002` first, which silently broke email-summarize and
 # other resolve_endpoint callers with "Cannot reach model").
+#
+# IMPORTANT: match "embed" (not just "embedding") so the common Ollama embedding
+# models are caught — nomic-embed-text, mxbai-embed-large, snowflake-arctic-embed,
+# embeddinggemma. Several embedding models have NO "embed" in their name at all
+# (bge-m3, gte-*, e5-*, all-minilm, stella) so they're listed explicitly. Without
+# this, a host that lists bge-m3 before its chat models auto-picks the embedding
+# model and every resolve_endpoint AI caller (digest, audit, level-up, hot,
+# daily-plan, recommend) silently fails / falls back to deterministic.
 _NON_CHAT_MODEL = (
-    "text-embedding", "embedding", "tts-", "whisper", "dall-e",
+    "embed", "tts-", "whisper", "dall-e",
     "moderation", "rerank", "reranker", "clip", "stable-diffusion",
+    # embedding models whose names don't contain "embed":
+    "bge-", "bge:", "gte-", "e5-", "all-minilm", "minilm", "stella",
 )
 
 
