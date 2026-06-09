@@ -1015,6 +1015,20 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
         from core.database import SessionLocal, CalendarEvent, CalendarCal, Note
         from routes.email_helpers import _imap_connect, _decode_header
 
+        # ----- Calendar: refresh from CalDAV, then read today's events -----
+        # The brief reads the local DB; nothing else pulls CalDAV on a schedule,
+        # so refresh here first. Best-effort + time-boxed: a sync failure (or a
+        # missing/offline account) must never block the digest from going out.
+        try:
+            import asyncio as _asyncio
+            from src.caldav_sync import sync_caldav, _load_caldav_accounts
+            if _load_caldav_accounts(owner or ""):
+                _sres = await _asyncio.wait_for(sync_caldav(owner or ""), timeout=45)
+                if _sres.get("errors"):
+                    logger.info(f"daily_brief: caldav sync errors: {_sres['errors']}")
+        except Exception as _se:
+            logger.info(f"daily_brief: caldav pre-sync skipped: {_se}")
+
         # ----- Calendar: today's events -----
         today = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = today + _td(days=1)
@@ -2269,6 +2283,34 @@ async def action_cookbook_serve(
     return f"Launched {repo_id} (session {sid})", True
 
 
+async def action_sync_calendar(owner: str, **kwargs) -> Tuple[str, bool]:
+    """Pull the latest CalDAV state (calendars + events) into the local DB so
+    the calendar UI and the daily brief reflect what's actually on the user's
+    Google/CalDAV calendar. Nothing else syncs CalDAV on a schedule — the UI
+    sync button and this action are the only refresh paths. No-op when CalDAV
+    isn't configured for `owner`."""
+    try:
+        from src.caldav_sync import sync_caldav, _load_caldav_accounts
+        if not _load_caldav_accounts(owner or ""):
+            raise TaskNoop("CalDAV is not configured")
+        res = await sync_caldav(owner or "")
+        errs = res.get("errors") or []
+        msg = (
+            f"Calendar sync: {res.get('calendars', 0)} calendars, "
+            f"{res.get('events', 0)} events"
+        )
+        if res.get("deleted"):
+            msg += f", {res['deleted']} removed"
+        if errs:
+            return f"{msg}; errors: {'; '.join(str(e) for e in errs)[:300]}", False
+        return msg, True
+    except TaskNoop:
+        raise
+    except Exception as e:
+        logger.error(f"sync_calendar action failed: {e}")
+        return f"Calendar sync failed: {e}", False
+
+
 BUILTIN_ACTIONS = {
     "tidy_sessions": action_tidy_sessions,
     "tidy_documents": action_tidy_documents,
@@ -2278,6 +2320,7 @@ BUILTIN_ACTIONS = {
     "draft_email_replies": action_draft_email_replies,
     "extract_email_events": action_extract_email_events,
     "classify_events": action_classify_events,
+    "sync_calendar": action_sync_calendar,
     # ping_events removed from the user-facing registry. Calendar reminders
     # are represented as Notes, so note pings are the single dispatch path.
     "daily_brief": action_daily_brief,
@@ -2302,6 +2345,7 @@ BUILTIN_ACTION_INFO = {
     "draft_email_replies": "Pre-draft AI reply suggestions for new inbox emails",
     "extract_email_events": "Scan emails for booking/meeting confirmations and auto-add to calendar",
     "classify_events": "Tag upcoming events with importance (low/normal/high/critical) and type (work/health/travel/etc.); colors them too",
+    "sync_calendar": "Pull the latest CalDAV (Google/iCloud/etc.) calendars + events into BertOS so the UI and daily brief stay current",
     "daily_brief": "Build a morning digest: today's calendar, unread email count + top senders, active todos",
     "learn_sender_signatures": "LLM learns each sender's signature from 3+ of their recent emails; cached per address so future renders fold sigs reliably without heuristics",
     "ssh_command": "Run a shell command on a local or remote host",

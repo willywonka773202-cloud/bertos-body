@@ -159,6 +159,21 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         token = request.cookies.get(SESSION_COOKIE)
         result = auth_manager.status(token)
         result["signup_enabled"] = auth_manager.signup_enabled
+        # Single-user local mode (AUTH_ENABLED=false): there is no login or
+        # first-run admin setup. Report configured + authenticated so the SPA
+        # skips the setup/login screens and lands directly in the app (the
+        # backend already treats loopback callers as the single owner).
+        try:
+            from src.auth_helpers import _auth_disabled
+            if _auth_disabled():
+                result["auth_enabled"] = False
+                result["configured"] = True
+                result["authenticated"] = True
+                result["is_admin"] = True
+                if not result.get("username"):
+                    result["username"] = "owner"
+        except Exception:
+            pass
         # Include the caller's effective privileges so the frontend can
         # hide / dim UI controls the user isn't allowed to use. Admins get
         # ADMIN_PRIVILEGES (everything on), regular users get their stored
