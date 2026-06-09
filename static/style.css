@@ -36569,8 +36569,11 @@ body.theme-frosted .modal {
 .cockpit-proj-status { font-size: .68rem; text-transform: uppercase; letter-spacing: .4px; }
 .cockpit-proj-path { font-size: .7rem; opacity: .55; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: ui-monospace, monospace; }
 .cockpit-proj-path.dim { opacity: .3; font-style: italic; font-family: inherit; }
-.cockpit-build-btn { margin-top: 9px; font-size: .74rem; background: rgba(91,140,255,.14); color: #bcd0ff; border: 1px solid rgba(91,140,255,.3); border-radius: 8px; padding: 4px 10px; cursor: pointer; transition: background .15s; }
+.cockpit-build-btn { font-size: .74rem; background: rgba(91,140,255,.14); color: #bcd0ff; border: 1px solid rgba(91,140,255,.3); border-radius: 8px; padding: 4px 10px; cursor: pointer; transition: background .15s; }
 .cockpit-build-btn:hover { background: rgba(91,140,255,.26); }
+.cockpit-proj-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.cockpit-map-btn { font-size: .74rem; background: rgba(240,180,41,.12); color: #f0c861; border: 1px solid rgba(240,180,41,.3); border-radius: 8px; padding: 4px 10px; cursor: pointer; transition: background .15s; }
+.cockpit-map-btn:hover { background: rgba(240,180,41,.24); }
 .cockpit-recent-list { display: flex; flex-direction: column; gap: 2px; }
 .cockpit-note { display: flex; align-items: baseline; gap: 9px; padding: 7px 8px; border-radius: 8px; font-size: .8rem; }
 .cockpit-note:hover { background: rgba(255,255,255,.03); }

@@ -63,8 +63,15 @@ async function fetchGraph() {
 function scopeTo(projectId, name) {
   state.scope = projectId ? { projectId, name: name || projectId } : null;
   state.pinned = null;
-  state.loaded = false;
   renderScopePill();
+  _reloadScoped(0);
+}
+// Force a (re)load honoring the current scope, but WAIT for any in-flight load
+// to settle first — otherwise render()'s loading-guard silently drops the
+// scoped reload (e.g. when the tab-switch already kicked a full-graph load).
+function _reloadScoped(tries) {
+  if (state.loading && tries < 40) { setTimeout(() => _reloadScoped(tries + 1), 100); return; }
+  state.loaded = false;
   render(true);
 }
 function renderScopePill() {
@@ -469,6 +476,24 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-const memoryTree = { render };
+// Public entry for other surfaces (e.g. the Cockpit project cards) to open the
+// Tree focused on one project. Ensures the graph is rendered and the memory
+// layer is visible, then scopes.
+function scopeToProject(projectId, name) {
+  if (!projectId) return;
+  // Make sure memories are visible (a prior manual filter toggle shouldn't hide
+  // the project's whole subgraph).
+  if (state.filters.memory === false) {
+    state.filters.memory = true;
+    const b = document.querySelector('.mtree-legend-item[data-mtype="memory"]');
+    if (b) b.classList.remove('off');
+  }
+  // Ensure the canvas/ctx are wired (no-op if the tab is already open), then
+  // scope — scopeTo waits out any in-flight load before reloading scoped.
+  render(false);
+  scopeTo(projectId, name);
+}
+
+const memoryTree = { render, scopeToProject };
 export default memoryTree;
 window.memoryTree = memoryTree;

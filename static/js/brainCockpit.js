@@ -61,13 +61,23 @@ function renderProjects(p) {
         <span class="cockpit-proj-name">${esc(pr.name)}</span>
         <span class="cockpit-proj-status" style="color:${c}">${esc(pr.status || '')}</span></div>
       ${pr.localPath ? `<div class="cockpit-proj-path" title="${esc(pr.localPath)}">${esc(pr.localPath)}</div>` : `<div class="cockpit-proj-path dim">no local path</div>`}
-      ${buildable ? `<button class="cockpit-build-btn" data-proj="${esc(pr.name)}" title="Ask the chat to build in this project">⚒ Build…</button>` : ''}
+      <div class="cockpit-proj-actions">
+        ${buildable ? `<button class="cockpit-build-btn" data-proj="${esc(pr.name)}" title="Ask the chat to build in this project">⚒ Build…</button>` : ''}
+        ${pr.id ? `<button class="cockpit-map-btn" data-pid="${esc(pr.id)}" data-pname="${esc(pr.name)}" title="See this project's memory subgraph">🕸 Map</button>` : ''}
+      </div>
     </div>`;
   }).join('');
   // "Build…" → prefill the chat with a build request for that project (the chat's
   // brain_build/brain_deep_build tools do the work). No direct spend from here.
   box.querySelectorAll('.cockpit-build-btn').forEach((b) => {
     b.onclick = () => prefillChat(`Use the brain to build in the "${b.dataset.proj}" project: `);
+  });
+  // "Map" → jump to the Memory Tree tab, scoped to this project's subgraph.
+  box.querySelectorAll('.cockpit-map-btn').forEach((b) => {
+    b.onclick = () => {
+      document.querySelector('.memory-tab[data-memory-tab="tree"]')?.click();
+      setTimeout(() => { window.memoryTree?.scopeToProject?.(b.dataset.pid, b.dataset.pname); }, 120);
+    };
   });
 }
 
