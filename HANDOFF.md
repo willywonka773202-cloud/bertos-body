@@ -1,10 +1,10 @@
 # HANDOFF — BertOS (Odysseus fork)
 
 <!-- State header: keep these 5 lines accurate. Claude reads this first each session and picks up from Next. -->
-- **Version:** 0.6.0
-- **Status:** verified-pass (all 4 daily-driver integrations done; deploy bundle ready)
+- **Version:** 1.0.0
+- **Status:** LIVE — deployed to the always-on desktop, verified end-to-end
 - **Updated:** 2026-06-08
-- **Next:** **All four wired-up items are DONE.** (1) Daily brief → phone (ntfy, 7am task armed), (2) Email inbox (Gmail IMAP, verified), (3) Calendar (Google CalDAV synced + reaches the brief — owner-mismatch root-caused + fixed, committed `4234e62`), (4) **Deploy bundle for the always-on Windows desktop is built + committed `1477b50`** — `deploy/desktop/` (overlay compose + `.env` template + laptop packager + `DEPLOY-DESKTOP.md` runbook): Docker stack, Tailscale-only via `tailscale serve`, migrates data+key+vault from the laptop. **OWNER ACTION (I can't reach the desktop — SSH off, I'm on the laptop):** run `bash deploy/desktop/package-migration.sh` on the laptop, then follow `deploy/desktop/DEPLOY-DESKTOP.md` Part B on the desktop. **Other remaining:** bertosV2 route-level free-first kill-switch still UNCOMMITTED in that repo's tree (owner integrates; parallel Codex fleet owns those files). Live body (laptop dev): `uvicorn app:app` on :7777.
+- **Next:** **🎉 SHIPPED. BertOS runs 24/7 on the Windows desktop (`desktop-u3m3uq1`) in Docker, reachable Tailscale-only at `https://desktop-u3m3uq1.tail3ae957.ts.net` — confirmed opening on the phone.** All four daily-driver items live: daily brief → phone (ntfy, 7am armed), Gmail IMAP, Google CalDAV, and the deploy. Migration carried `data/` + `.app_key` + vault over Taildrop; in-container verification on the desktop: `auth/status` configured+authenticated, `config/accounts` has_password:true, `POST /api/calendar/sync` → `{calendars:2, events:35, errors:[]}`. Laptop instance stopped (desktop is the sole host → no double briefs). **Small owner follow-ups:** (1) restart Ollama after setting `OLLAMA_HOST=0.0.0.0` so the container reaches it for chat/models; (2) confirm Docker Desktop "start on login" is ON so it survives reboot. **Still open (unrelated):** bertosV2 route-level free-first kill-switch uncommitted in that repo's tree.
 
 ---
 
@@ -18,6 +18,12 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-08 — Claude Code — build+check (Phase 3 deploy — SHIPPED to the desktop)
+- **BertOS is LIVE on the always-on Windows desktop**, guided step-by-step (owner ran the commands; SSH is off there so I couldn't drive it). Code travelled as a Taildrop tarball (`bertos-code.tgz`, since the `bertos` branch was never pushed) alongside `data/`+`.app_key` and the vault. `docker compose -f docker-compose.yml -f deploy/desktop/docker-compose.bertos.yml up -d --build` built clean; all 4 containers (odysseus/chromadb/searxng/ntfy) `Up`. Exposed Tailscale-only via `tailscale serve --bg 7777` → `https://desktop-u3m3uq1.tail3ae957.ts.net` (had to enable Serve on the tailnet once). **Owner confirmed the UI opens on their phone.**
+- **Verified in-container on the desktop:** `GET /api/auth/status` → configured+authenticated; `GET /api/calendar/config/accounts` → Google Calendar `has_password:true` (the migrated `.app_key` decrypts the saved password inside the container); `POST /api/calendar/sync` → `{calendars:2, events:35, deleted:0, errors:[]}`. Laptop instance stopped → desktop is the sole BertOS host (no duplicate 7am briefs / email pollers).
+- Owner follow-ups: restart Ollama after `OLLAMA_HOST=0.0.0.0` (chat/models); confirm Docker Desktop start-on-login for reboot survival.
+- next: (optional) enable brain tools on the desktop; otherwise the daily-driver build is done.
 
 ### 2026-06-08 — Claude Code — build (Phase 3 deploy bundle)
 - **Built a turnkey deploy bundle for the always-on Windows desktop host** (`desktop-u3m3uq1`, 100.127.213.97, i9/RTX 3070) — committed `1477b50`. User chose: Docker Desktop + migrate-my-setup + Tailscale-only. `deploy/desktop/`: `docker-compose.bertos.yml` (overlay on the existing stack — adds the memory-vault bind mount via `BERTOS_OBSIDIAN_VAULT=/vault`, the `""`-owner reconciliation, and optional brain-bridge env the base compose doesn't pass); `.env.desktop.example` (loopback bind + native-Windows-Ollama via `host.docker.internal`); `package-migration.sh` (laptop-side — tars `data/` incl. the `.app_key` Fernet key + the vault, prints the Taildrop `tailscale file cp` command, since SSH is off on the desktop); `DEPLOY-DESKTOP.md` (full runbook: prereqs → migrate → `docker compose up` → `tailscale serve --bg 7777` → verify → survive-reboot → optional brain → troubleshooting). Exposure = Tailscale Serve only (no LAN), HTTPS at `https://desktop-u3m3uq1.tail3ae957.ts.net`, single-user no-login stays safe behind the tailnet.
