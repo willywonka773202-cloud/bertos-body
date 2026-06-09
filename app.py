@@ -545,6 +545,10 @@ app.include_router(setup_admin_wipe_routes(session_manager))
 from routes.memory_routes import setup_memory_routes
 memory_router = setup_memory_routes(memory_manager, session_manager, memory_vector=memory_vector)
 app.include_router(memory_router)
+# BertOS brain proxy (read-only) — lets the SPA render the Memory Tree + Brain
+# panel via the body instead of reaching the brain host directly. Fails soft.
+from routes.brain_routes import setup_brain_routes
+app.include_router(setup_brain_routes())
 from routes.skills_routes import setup_skills_routes
 app.include_router(setup_skills_routes(skills_manager))
 
