@@ -78,8 +78,12 @@ function buildModel(graph) {
   const links = (graph.links || [])
     .filter((l) => keptIds.has(l.source) && keptIds.has(l.target))
     .map((l) => ({ s: byId.get(l.source), t: byId.get(l.target), kind: l.kind }));
+  // Prune isolated memory nodes (their links fell outside the kept set) — with no
+  // springs they just orbit the repulsion/gravity shell as noise. Keep all hubs.
+  const linked = new Set();
+  for (const l of links) { linked.add(l.s.id); linked.add(l.t.id); }
   state.raw = { counts };
-  state.nodes = [...byId.values()];
+  state.nodes = [...byId.values()].filter((n) => linked.has(n.id) || n.type !== 'memory');
   state.links = links;
   state.byId = byId;
 }
@@ -134,8 +138,13 @@ function tick() {
 function draw() {
   const ctx = state.ctx, c = state.canvas;
   const W = c.clientWidth, H = c.clientHeight;
+  // Keep the backing buffer synced with the (flex-settled) display size, and
+  // clear the FULL buffer — otherwise a size mismatch leaves an uncleared strip
+  // where stale frames pile up (the "bottom band").
+  if (c.width !== Math.round(W * state.dpr) || c.height !== Math.round(H * state.dpr)) resize();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, c.width, c.height);
   ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-  ctx.clearRect(0, 0, W, H);
   ctx.save();
   ctx.translate(state.view.x, state.view.y);
   ctx.scale(state.view.scale, state.view.scale);
@@ -185,8 +194,13 @@ function draw() {
 }
 
 function fitView() {
-  const ns = state.nodes.filter(visible);
-  if (!ns.length || !state.canvas) return;
+  const all = state.nodes.filter(visible);
+  if (all.length < 3 || !state.canvas) return;
+  // Frame the central mass (ignore the furthest ~6% so a few stragglers don't
+  // shrink the whole graph) — outliers stay pannable.
+  let mx = 0, my = 0; for (const n of all) { mx += n.x; my += n.y; } mx /= all.length; my /= all.length;
+  const ns = all.map((n) => ({ n, d: (n.x - mx) ** 2 + (n.y - my) ** 2 }))
+    .sort((a, b) => a.d - b.d).slice(0, Math.max(3, Math.floor(all.length * 0.94))).map((o) => o.n);
   let minx = 1e9, miny = 1e9, maxx = -1e9, maxy = -1e9;
   for (const n of ns) { if (n.x < minx) minx = n.x; if (n.y < miny) miny = n.y; if (n.x > maxx) maxx = n.x; if (n.y > maxy) maxy = n.y; }
   const W = state.canvas.clientWidth, H = state.canvas.clientHeight, pad = 56;
