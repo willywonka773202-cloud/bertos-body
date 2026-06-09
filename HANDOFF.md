@@ -4,7 +4,7 @@
 - **Version:** 0.1.0
 - **Status:** building
 - **Updated:** 2026-06-08
-- **Next:** Slice 1 (rebrand, user-facing only + gold-on-charcoal theme + sw.js cache-bust) executing. Then slice 2 memory→vault (needs owner↔projectId design decision + round-trip test), slice 3 guardrail (llm_core dispatch-level kill-switch — resolve_endpoint gating alone leaks), slice 4 daily-brief→ntfy. Live server: `uvicorn app:app` on http://127.0.0.1:7777 (NOT 7860).
+- **Next:** Slice 4 (daily brief → ntfy) — `action_daily_brief` already gathers cal/email/todos (no LLM); register a seeded cron task + wire its output to ntfy via in-process `dispatch_reminder`; stand up ntfy (no Docker → brew/alt channel). Then slice 2 memory→vault (LAST, SAFE app-owned partition; design+must-fixes in `docs/bertos/SLICE2-MEMORY-DESIGN-v2.md`). Live server: `uvicorn app:app` on http://127.0.0.1:7777.
 
 ---
 
@@ -18,6 +18,22 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-08 — Claude Code — build+check
+- **Slice 3 DONE & verified — free-first cost guardrail.** `is_paid` column + migration; `free_only` param + `BERTOS_ALLOW_PAID` kill-switch (default OFF, read LIVE); **fail-CLOSED guard at the `llm_core` dispatch choke point** (`llm_call` + `llm_call_async` + `stream_llm`) so no direct-build/bypass caller can spend; `free_only=True` threaded through all unattended sites; the 8 bypass leaks gated.
+- **Fixed 3 things verification caught (verify-before-claim earned its keep):** (1) REGRESSION — the builder's fail-closed "unknown host = paid" broke 4 pre-existing fallback tests AND would block legit self-hosted endpoints → replaced with a KIND-AWARE policy: known-paid host=paid; unknown host paid ONLY if `endpoint_kind='api'`; `auto`/`local`/`proxy`/unset = free (self-hosted LAN/Tailscale just works); `is_paid=True` forces paid. Expanded the known-paid host list. (2) LEAK `embeddings.py` — added a known-paid guard (no paid embeddings on autopilot; falls back to local FastEmbed). (3) LEAK sync `llm_call` — added the dispatch guard (mirror of async).
+- Verified: **pytest 20/20** (4 fallback + 12 free-only + 4 dispatch — incl. a no-network proof that a paid host raises 402 with `httpx.post` NEVER called); app boots clean on :7777 with the guardrail loaded, `/api/health` 200, kill-switch default OFF, rebrand intact. To use paid models interactively: set `BERTOS_ALLOW_PAID=1` (unattended work stays free regardless).
+- next: slice 4 daily-brief → ntfy.
+
+### 2026-06-08 — Claude Code — check (design) + reorder
+- **Slice-2 memory design — adversarial pass caught CRITICAL data-loss bugs → reordered + rescoped.** 5-agent design+critique workflow (`docs/bertos/SLICE2-MEMORY-DESIGN.md`) chose vault-canonical .md, but the critic proved the naive design would, on the first audit/`save()` (full-store-replace, absence=delete): (HIGH) RELOCATE all ~720 existing human/agent notes into one folder + rewrite their projectId/role/source/tags; (HIGH) make delete a no-op (orphans never unlinked → resurrect); (HIGH) duplicate/orphan notes on every pin/increment_uses (slug mismatch). The user's real 721-note brain vault would be corrupted.
+- **DECISION:** (1) memory→vault moved LAST + rescoped SAFE-by-construction — app owns a DEDICATED vault partition (writes .md there only; reconciles save() within that folder only; NEVER reads/writes the 720 existing notes); broader read-only retrieval deferred; backup vault before first write. (2) Reordered: guardrail next (money-safety, code-only, zero vault risk); daily-brief doesn't depend on memory. New order: 3 → 4 → 2.
+- next: implement slice 3 guardrail (build+verify workflow) + integration-test the no-paid-on-autopilot guarantee.
+
+### 2026-06-08 — Claude Code — build+check
+- **Slice 1 DONE & verified — committed `bb2b714` (scaffolding) + `346811f` (rebrand):** user-facing Odysseus→BertOS across 11 files (manifest/index/login/app.js display strings; model-visible agent_loop / tool_index:156 / tool_schemas; README H1; service Description) + gold-on-charcoal default theme (#d4af37 on #0f1420, incl. inline boot-CSS fallbacks → no white flash) + sw.js cache v327→v328. Aliases/internals kept INTACT: ODYSSEUS_* env, odysseus-ui service id, odysseus-theme LS key, odysseus_tool_index COLLECTION_NAME, upstream repo URL.
+- Verification = 4-agent workflow (1 build + 3 adversarial audits: NO USER-FACING LEFTOVERS / all 6 invariants INTACT / theme OK) AND live curl on :7777 rendered DOM (title/wordmark/placeholder/login all "BertOS"; manifest BertOS; served boot-CSS gold+charcoal, zero old hexes; /api/health 200). Screenshot skipped (2 browsers connected → picker friction; verified via curl instead). App is live at http://127.0.0.1:7777.
+- next: slice 2 memory→vault.
 
 ### 2026-06-08 — Claude Code — build+check
 - **Slice 0 DONE & verified:** BertOS boots via py3.11 `.venv` + `uvicorn app:app` on http://127.0.0.1:7777. Boot blocker found+fixed by running (not guessing): `init_db()` ran at import before any dir was created → `sqlite3.OperationalError: unable to open database file`; fixed via `setup.create_dirs()` (11 data dirs). Proof = HTTP: `/`,`/login`,`/api/health` → 200; built-in MCP (RAG/Memory/Image/Email-11-tools) connected; Chroma absent → graceful degrade; log reaches "Application startup complete".
