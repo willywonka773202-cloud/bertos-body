@@ -1,10 +1,10 @@
 # HANDOFF — BertOS (Odysseus fork)
 
 <!-- State header: keep these 5 lines accurate. Claude reads this first each session and picks up from Next. -->
-- **Version:** 0.1.0
-- **Status:** building
+- **Version:** 0.2.0
+- **Status:** verified-pass
 - **Updated:** 2026-06-08
-- **Next:** Slice 2 — memory→Obsidian-vault (the LAST Phase-1 slice; SAFE app-owned partition per `docs/bertos/SLICE2-MEMORY-DESIGN-v2.md` + its re-critique must-fixes — incl. the `delete_orphans` gate; backup the vault before first write; round-trip + restart-persistence tests are non-negotiable). Daily-brief delivery channel (self-hosted ntfy on the always-on host / ntfy.sh / in-app browser) pending the owner's choice; interim `reminder_channel=browser`. Live server: `uvicorn app:app` on http://127.0.0.1:7777.
+- **Next:** **PHASE 1 COMPLETE** (rebrand + cost guardrail + vault memory + daily brief — all run-and-verified, committed on `bertos`). Two small follow-ups owed to the owner: (1) pick the daily-brief delivery channel (self-hosted ntfy on the always-on host / ntfy.sh / in-app browser; interim `reminder_channel=browser`); (2) connect email/calendar so the brief has real content. **Phase 2 = bring the brain via MCP** (master prompt §5): stand up bertosV2's coding brain as an MCP server, register it in `src/builtin_mcp.py`. Live server: `uvicorn app:app` on http://127.0.0.1:7777.
 
 ---
 
@@ -18,6 +18,19 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-08 — Claude Code — build+check
+- **Slice 2 DONE & verified — memory → Obsidian vault. PHASE 1 COMPLETE.** Committed `7d2df0c` (backend) + `7593cf5` (slice-3 test follow-up). App memory is now human-readable `.md` in `<vault>/Memory/bertos/` (one file per memory; native frontmatter id/ts/kind/source/tags + an `extra:` submap round-tripping ALL other keys incl. unknown). MemoryManager fully reimplemented (entire method surface + `self.memory_file` preserved); ChromaDB stays a derived index.
+- **Two adversarial passes earned their keep:** the first build was 95% right but the audit found (a) a CRITICAL path-traversal escape — an unsanitized `id` (`"../human/x"`, reachable via `/api/import`) could write OUTSIDE the partition and overwrite a real note; (b) a delete TOCTOU — `delete_orphans` save used a pre-lock snapshot, so a concurrent add got orphan-deleted. FIXED: central `_atomic_write` partition fence + `_safe_id` sanitization (no id from any source can escape), and a race-safe locked **delete-by-id** (genuine delete callers switched). Re-audit re-ran both PoCs → CONTAINED.
+- Verified: **pytest 64/64** (14 new vault tests incl. traversal + concurrency regressions); LIVE through the running app — `POST /api/memory/add` → real `.md` in `Memory/bertos/` → **survives a full restart** (vault-backed, not in-memory); and the owner's **721 existing notes re-checksum byte-for-byte identical** (`198c42b6…`) before/after. Vault backed up first (`BertOS-Vault-backup-20260608-slice2.tgz`).
+- Also fixed slice-3 fallout: 4 brittle owner-scope/source-assertion tests updated to the new `free_only=` signatures (owner-scoping preserved).
+- next: Phase 2 — bring the brain via MCP.
+
+### 2026-06-08 — Claude Code — build+check
+- **Slice-3 guardrail regression test — closed the embeddings gap.** A re-audit of the two paid-host leaks (sync `llm_call`, `EmbeddingClient.encode`) confirmed BOTH code guards are already present & committed (`src/llm_core.py:1093-1113` fail-closed 402; `src/embeddings.py:74-90` known-paid → FastEmbed fallback). But the regression file `tests/test_guardrail_dispatch.py` only proved the `llm_call` half — the embedding dispatch path had ZERO test coverage.
+- Added 3 tests to `tests/test_guardrail_dispatch.py`: `test_embedding_encode_blocks_paid_without_network` (paid host + switch OFF → `RuntimeError`, and `_client.post` asserted NEVER called — same no-network proof style as the sync path), `..._allows_paid_when_opted_in` (`BERTOS_ALLOW_PAID=1` reaches the mocked network), `..._allows_local_when_switch_off` (localhost never blocked). Updated the module docstring to name embeddings as the 2nd independent choke point.
+- Verified: **pytest 7/7** in `test_guardrail_dispatch.py` (4 existing + 3 new), plus `test_free_only_guardrail.py` + `test_embeddings.py` **13/13** — no regressions. The block-paid test is a real guard (would fail with `AssertionError` not `RuntimeError` if the embeddings guardrail were removed).
+- next: slice 2 — memory→vault (unchanged; uncommitted WIP).
 
 ### 2026-06-08 — Claude Code — build+check
 - **Slice 4 DONE & verified — daily brief → push.** `action_daily_brief` now pushes its digest via in-process `dispatch_reminder` (free_only=True); seeded a paused "Daily Brief" cron (07:00) in `HOUSEKEEPING_DEFAULTS`. Verification caught + fixed a REAL bug: the ntfy `Title` header carried a raw em-dash → `'ascii' codec` encode error that silently dropped EVERY push; now ASCII-sanitized (body stays full UTF-8).
