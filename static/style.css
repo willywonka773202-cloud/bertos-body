@@ -37004,3 +37004,8 @@ body.theme-frosted .modal {
 .cockpit-launch-fire:hover:not(:disabled) { transform: translateY(-1px); }
 .cockpit-launch-fire:disabled { opacity: 0.6; cursor: default; }
 .cockpit-launch-status { font-size: 0.74rem; opacity: 0.8; }
+
+.cockpit-notify-test { font-size: 0.74rem; font-weight: 600; color: #bcd0ff; padding: 7px 12px; border-radius: 8px; cursor: pointer; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); transition: background 0.14s ease; }
+.cockpit-notify-test:hover:not(:disabled) { background: rgba(88,132,255,0.12); }
+.cockpit-notify-test:disabled { opacity: 0.6; cursor: default; }
+.cockpit-launch-hint { font-size: 0.68rem; opacity: 0.5; margin-top: 7px; }

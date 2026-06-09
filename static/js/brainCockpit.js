@@ -157,10 +157,20 @@ function renderLauncher(projectsRes) {
     <textarea id="cockpit-launch-obj" class="cockpit-launch-obj" rows="2" placeholder="What should Bert build or fix? e.g. “add a dark-mode toggle, then commit”">${esc(typed)}</textarea>
     <div class="cockpit-launch-actions">
       <button id="cockpit-launch-fire" class="cockpit-launch-fire">🚀 Build it</button>
+      <button id="cockpit-notify-test" class="cockpit-notify-test" title="Send a test push to your phone">🔔 Test ping</button>
       <span class="cockpit-launch-status" id="cockpit-launch-status"></span>
-    </div>`;
+    </div>
+    <div class="cockpit-launch-hint">Fire it and walk away — Bert texts your phone when the build is done.</div>`;
   const fire = el('cockpit-launch-fire');
   if (fire) fire.onclick = fireBuild;
+  const nt = el('cockpit-notify-test');
+  if (nt) nt.onclick = async () => {
+    const status = el('cockpit-launch-status');
+    nt.disabled = true; nt.textContent = '🔔 Sending…';
+    const r = await jpost('/api/brain/notify-test', {});
+    nt.disabled = false; nt.textContent = '🔔 Test ping';
+    if (status) status.textContent = (r && r.ok) ? '✓ Sent — check your phone.' : 'Push channel not set up yet.';
+  };
 }
 async function fireBuild() {
   const proj = el('cockpit-launch-proj'); const obj = el('cockpit-launch-obj');

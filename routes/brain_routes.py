@@ -144,6 +144,7 @@ def setup_brain_routes() -> APIRouter:
             return {"ok": False, "error": "A project is required."}
 
         async def _run():
+            ok_done = False
             try:
                 timeout = httpx.Timeout(1800.0, connect=10.0)
                 async with httpx.AsyncClient(timeout=timeout) as client:
@@ -156,10 +157,39 @@ def setup_brain_routes() -> APIRouter:
                         # from /api/brain/deep-jobs by Mission Control.
                         async for _ in resp.aiter_lines():
                             pass
+                ok_done = True
             except Exception as e:  # background task — log, never raise
                 logger.warning(f"brain build background run failed: {e}")
+            # Proactive text: ping the phone (via the configured ntfy channel)
+            # the moment the build is done, so you can fire-and-walk-away.
+            try:
+                from routes.note_routes import dispatch_reminder
+                await dispatch_reminder(
+                    title="Bert's AI",
+                    note_body=f"{'✅' if ok_done else '⚠️'} Build {'finished' if ok_done else 'ended'}: {objective[:90]}",
+                    note_id=f"build-{abs(hash(objective)) % 1000000}",
+                    owner="",
+                )
+            except Exception as e:
+                logger.debug(f"build-done notify skipped: {e}")
 
         asyncio.create_task(_run())
         return {"ok": True, "started": True, "objective": objective[:120]}
+
+    @router.post("/notify-test")
+    async def brain_notify_test():
+        """Send a test push to the configured channel (ntfy → phone) so the user
+        can confirm proactive texts reach them."""
+        try:
+            from routes.note_routes import dispatch_reminder
+            res = await dispatch_reminder(
+                title="Bert's AI",
+                note_body="🔔 Test ping — proactive texts are working.",
+                note_id="notify-test",
+                owner="",
+            )
+            return {"ok": True, "dispatched": res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
 
     return router
