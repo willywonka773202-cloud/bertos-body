@@ -91,4 +91,15 @@ def setup_brain_routes() -> APIRouter:
         """The brain's projects (build/automate targets)."""
         return await _brain_get("/api/projects", timeout=10.0)
 
+    @router.get("/deep-jobs")
+    async def brain_deep_jobs(limit: int = 10):
+        """Recent Deep Build runs (what the AI built), newest first."""
+        return await _brain_get(f"/api/deep/jobs?limit={max(1, min(50, limit))}", timeout=12.0)
+
+    @router.get("/recommend")
+    async def brain_recommend():
+        """Ranked automation recommendations grounded in the real projects.
+        Slow (runs a free model) — call on demand, not on dashboard open."""
+        return await _brain_get("/api/automations/recommend", timeout=130.0)
+
     return router

@@ -36542,3 +36542,15 @@ body.theme-frosted .modal {
 .cockpit-note-kind { color: var(--accent-primary, #5b8cff); flex-shrink: 0; }
 .cockpit-note-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: .9; }
 .cockpit-note-meta { font-size: .68rem; opacity: .45; flex-shrink: 0; }
+.cockpit-suggest-btn { margin: 0 0 12px; font-size: .82rem; background: linear-gradient(135deg, rgba(91,140,255,.22), rgba(240,180,41,.16)); color: #dbe6ff; border: 1px solid rgba(91,140,255,.35); border-radius: 10px; padding: 8px 16px; cursor: pointer; transition: filter .15s; }
+.cockpit-suggest-btn:hover:not(:disabled) { filter: brightness(1.18); }
+.cockpit-suggest-btn:disabled { opacity: .6; cursor: default; }
+.cockpit-rec-list { display: flex; flex-direction: column; gap: 10px; padding-bottom: 12px; }
+.cockpit-rec { border: 1px solid var(--border,#2a3140); border-left: 3px solid var(--accent-primary,#5b8cff); border-radius: 10px; padding: 11px 13px; background: var(--panel,#131820); }
+.cockpit-rec-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.cockpit-rec-type { font-size: .64rem; text-transform: uppercase; letter-spacing: .5px; background: rgba(91,140,255,.16); color: #9ec0ff; border-radius: 5px; padding: 2px 7px; }
+.cockpit-rec-proj { font-size: .72rem; opacity: .6; }
+.cockpit-rec-impact { margin-left: auto; font-size: .64rem; text-transform: uppercase; opacity: .85; }
+.cockpit-rec-impact.i-high { color: #3fd17a; } .cockpit-rec-impact.i-medium { color: #f0b429; } .cockpit-rec-impact.i-low { color: #9aa4b2; }
+.cockpit-rec-title { font-weight: 600; font-size: .88rem; margin-bottom: 3px; }
+.cockpit-rec-why { font-size: .76rem; opacity: .7; line-height: 1.4; margin-bottom: 8px; }

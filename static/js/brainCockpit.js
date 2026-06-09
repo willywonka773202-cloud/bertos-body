@@ -108,11 +108,44 @@ async function render(force) {
   const body = el('cockpit-body');
   if (body && !loaded) body.classList.remove('cockpit-hidden');
   el('cockpit-status') && (el('cockpit-status').innerHTML = '<div class="cockpit-loading">Connecting to your brain…</div>');
-  const [status, projects, recent] = await Promise.all([
-    jget('/api/brain/status'), jget('/api/brain/projects'), jget('/api/brain/memory/recent?limit=12'),
+  const [status, projects, recent, jobs] = await Promise.all([
+    jget('/api/brain/status'), jget('/api/brain/projects'),
+    jget('/api/brain/memory/recent?limit=12'), jget('/api/brain/deep-jobs?limit=8'),
   ]);
   loaded = true; loading = false;
-  renderStatus(status); renderProjects(projects); renderRecent(recent);
+  renderStatus(status); renderProjects(projects); renderRecent(recent); renderBuilds(jobs);
+}
+
+const JOB_STATUS = { running: '#f0b429', done: '#3fd17a', error: '#ff7a6b', interrupted: '#9aa4b2' };
+function renderBuilds(j) {
+  const box = el('cockpit-builds'); if (!box) return;
+  if (!j || j.ok === false) { box.innerHTML = `<div class="cockpit-empty">No build history${j && j.code === 'BRAIN_ERROR' ? ' (update the brain to enable Deep Build)' : ''}.</div>`; return; }
+  const runs = j.data || [];
+  if (!runs.length) { box.innerHTML = `<div class="cockpit-empty">No Deep Build runs yet — ask the chat: “deep build …”.</div>`; return; }
+  box.innerHTML = runs.slice(0, 8).map((r) => {
+    const c = JOB_STATUS[r.status] || '#9aa4b2';
+    return `<div class="cockpit-note"><span class="cockpit-note-kind" style="color:${c}">●</span>
+      <span class="cockpit-note-text">${esc((r.objective || '').slice(0, 120))}</span>
+      <span class="cockpit-note-meta">${esc(r.status || '')}${typeof r.committed === 'number' ? ' · ' + r.committed + ' committed' : ''}</span></div>`;
+  }).join('');
+}
+
+async function suggest() {
+  const box = el('cockpit-recommend'), btn = el('cockpit-suggest-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Thinking about what to automate… (runs a free model, ~30s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '✨ Thinking…'; }
+  const r = await jget('/api/brain/recommend');
+  if (btn) { btn.disabled = false; btn.textContent = '✨ Suggest automations'; }
+  if (!r || r.ok === false) { box.innerHTML = `<div class="cockpit-empty">Couldn’t get recommendations${r && r.code === 'BRAIN_ERROR' ? ' (update the brain to enable)' : ''}.</div>`; return; }
+  const recs = (r.data || {}).recommendations || [];
+  if (!recs.length) { box.innerHTML = `<div class="cockpit-empty">No recommendations right now.</div>`; return; }
+  box.innerHTML = recs.map((x) => `<div class="cockpit-rec">
+    <div class="cockpit-rec-top"><span class="cockpit-rec-type">${esc(x.type || '')}</span>${x.projectName ? `<span class="cockpit-rec-proj">${esc(x.projectName)}</span>` : ''}<span class="cockpit-rec-impact i-${esc(x.impact || 'medium')}">${esc(x.impact || '')}</span></div>
+    <div class="cockpit-rec-title">${esc(x.title || '')}</div>
+    <div class="cockpit-rec-why">${esc((x.why || '').slice(0, 170))}</div>
+    <button class="cockpit-build-btn" data-obj="${esc(x.objective || '')}">▶ Set up</button></div>`).join('');
+  box.querySelectorAll('.cockpit-build-btn[data-obj]').forEach((b) => { b.onclick = () => prefillChat(`Automate this with the brain: ${b.dataset.obj}`); });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -120,6 +153,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (tab) tab.addEventListener('click', () => setTimeout(() => render(false), 30));
   const rf = el('cockpit-refresh');
   if (rf) rf.onclick = () => render(true);
+  const sg = el('cockpit-suggest-btn');
+  if (sg) sg.onclick = suggest;
 });
 
 const brainCockpit = { render };
