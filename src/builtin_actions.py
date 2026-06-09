@@ -1140,6 +1140,47 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
         else:
             plain.append("Todos: none active.")
 
+        # ----- Brain: what your AI got done in the last day (best-effort) -----
+        # Ties the bertosV2 brain into the brief — Deep Builds shipped + new
+        # durable memories. Skipped silently when the brain is off / lacks routes.
+        try:
+            import os as _os
+            import httpx as _httpx
+            _brain = _os.environ.get("BERTOS_BRAIN_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
+            _since = _dt.now() - _td(days=1)
+
+            def _recent_ts(ts):
+                try:
+                    return _dt.fromisoformat(str(ts).replace("Z", "+00:00")).replace(tzinfo=None) >= _since
+                except Exception:
+                    return False
+
+            _builds = _commits = _new_mems = 0
+            async with _httpx.AsyncClient(timeout=8.0) as _c:
+                try:
+                    _runs = ((await _c.get(f"{_brain}/api/deep/jobs?limit=40")).json().get("data")) or []
+                    for _r in _runs:
+                        if _r.get("status") == "done" and _recent_ts(_r.get("finishedAt") or _r.get("startedAt")):
+                            _builds += 1
+                            _commits += int(_r.get("committed") or 0)
+                except Exception:
+                    pass
+                try:
+                    _notes = (((await _c.get(f"{_brain}/api/memory/recent?limit=100")).json().get("data")) or {}).get("notes") or []
+                    _new_mems = sum(1 for _n in _notes if _recent_ts(_n.get("ts")))
+                except Exception:
+                    pass
+            _bits = []
+            if _builds:
+                _bits.append(f"{_builds} build{'s' if _builds != 1 else ''} shipped ({_commits} commit{'s' if _commits != 1 else ''})")
+            if _new_mems:
+                _bits.append(f"{_new_mems} new memor{'ies' if _new_mems != 1 else 'y'}")
+            if _bits:
+                plain.append("")
+                plain.append("Brain: " + ", ".join(_bits) + ".")
+        except Exception as _be:
+            logger.debug(f"daily_brief: brain section skipped: {_be}")
+
         plain_body = "\n".join(plain)
 
         # Push the digest via the configured reminder channel (browser/email/
