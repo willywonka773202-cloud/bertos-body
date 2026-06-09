@@ -1,10 +1,10 @@
 # HANDOFF — BertOS (Odysseus fork)
 
 <!-- State header: keep these 5 lines accurate. Claude reads this first each session and picks up from Next. -->
-- **Version:** 0.3.0
-- **Status:** verified-pass
+- **Version:** 0.4.0
+- **Status:** verified-pass (hardened)
 - **Updated:** 2026-06-08
-- **Next:** **PHASE 1 + PHASE 2 (brain integration) COMPLETE & committed.** BertOS is a verified daily-driver body with the bertosV2 coding brain wired in over MCP (6 `mcp__brain__*` tools: council / deep_build(+status/stop) / auto_cycle / health, free-first enforced). **Remaining (owner-watched / fresh-session work):** (1) **live acceptance** — start the brain host (`npm run bertos:host` in bertosV2) and have the BertOS agent run a *real* `brain_deep_build` end-to-end (it edits a repo + git-commits → do it watching, pick the target projectId). (2) Usability: pick the daily-brief channel; connect email/calendar. (3) Phase 3 (master prompt §6): converge/harden, deploy (Docker/PWA) to the always-on host. Cosmetic: `brain_health` daemon probe hits `/` (404) — switch to `/health`. Live body: `uvicorn app:app` on :7777.
+- **Next:** **PHASE 1 + PHASE 2 COMPLETE + HARDENED + live-acceptance run.** BertOS = verified daily-driver body + bertosV2 brain over MCP (6 `mcp__brain__*` tools, free-first). A 4-dimension adversarial review found + fixed 3 HIGH (scheme-less-URL fail-open, daily-brief fake-success, Deep Build paid-codex rescue) + MEDs/LOWs — committed `afb6208` (body) + `9226ae7` (bridge). **The brain_deep_build tool was run live (twice) on temple-run → real jobs ran end-to-end to `done` (integration PROVEN, free-first enforced), but the bertosV2 free single-round coder did not land a committed change (gate correctly refused unvetted output). Landing real improvements is a bertosV2-brain quality matter — that repo is actively developed by a parallel Codex fleet (don't rebuild/commit their route files).** **Owner items:** (1) the bertosV2 route-level free-first kill-switch (`lib/providers/paid-switch.ts` + 8 route files) is applied but left UNCOMMITTED in bertosV2's working tree — review + integrate + rebuild there. (2) pick daily-brief channel; connect email/calendar. (3) Phase 3: deploy (Docker/PWA) to the always-on host. Live body: `uvicorn app:app` on :7777.
 
 ---
 
@@ -18,6 +18,11 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-08 — Claude Code — check (hardening) + live acceptance
+- **Hardening: 4-dimension adversarial review of the whole rebuild → found + fixed 3 HIGH + 5 MED + 3 LOW** (committed `afb6208` body, `9226ae7` bridge). HIGH: H2 dispatch guard failed OPEN on a scheme-less base URL (`api.openai.com/v1` had no host → mis-classified free) → `_with_scheme()`; H3 daily brief discarded the dispatch result + always returned success → now reports real per-channel delivery; H1 Deep Build's `strongFreeRoleConfig` seated paid `codex-cli` as the escalation coder → fixed at the bertosV2 route boundary (`serverAllowsPaid()` + `coerceFreeRoles`). MED: M3 guard except-branches now fail CLOSED; M4 +Bedrock/Azure paid hosts; M5/M6/M7 brain_health honesty (daemon /health, token, canBuild); M8 PyYAML hard dep + fallback no longer corrupts list-of-dicts. Re-verified with EXECUTED proofs (scheme-less→paid; fail-closed on guard error; coerced Deep Build can't seat codex-cli). Tests: 56 + 22 green; body boots clean.
+- **Live Deep Build acceptance:** ran `brain_deep_build` via the MCP tool TWICE on the temple-run local repo (free-first; jobs `c29f2e32`, `5f51010b`). Both ran end-to-end to `status:done` → **integration PROVEN** (BertOS → bridge → real Deep Build job, free engine forced). Both committed 0 (round 0 "did not pass the gates") — the gate correctly refused to land an unvetted free single-round change; landing real improvements is a bertosV2 free-coder quality matter (that repo is actively developed by a parallel Codex fleet — left their route files uncommitted; did not rebuild their server).
+- next: owner integrates the bertosV2 route kill-switch + rebuilds; usability (channel/email/cal); Phase 3 deploy.
 
 ### 2026-06-08 — Claude Code — build+check (Phase 2 B/C/D)
 - **Phase 2 B/C/D DONE & verified — the full brain tool surface is callable from BertOS.** Extended `bertosV2/scripts/brain-mcp-server.mjs` (committed `a4a54c0`) with `brain_council` (POST /api/chat/council), `brain_deep_build` + `_status` + `_stop` (POST/GET/DELETE /api/deep/jobs — job-id + poll, never blocks), `brain_auto_cycle` (POST /api/auto/jobs, hard-forces `unattended:true` → Lane-B/free). Shared `callBrain()`: fails CLOSED `BRAIN_DOWN` when the Next host is down, 409→`PROJECT_BUSY`, optional `BERTOS_DAEMON_TOKEN`. Free-first is belt-and-suspenders over the brain's own `coerceFreeRoles`; `BRAIN_ALLOW_PAID=0` structurally blocks paid engines (council omits paid members; deep_build forced `engine:"strongest"` free; auto forced unattended).
