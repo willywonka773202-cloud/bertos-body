@@ -227,9 +227,13 @@ function loop() {
     }
   }
   draw();
-  state.raf = requestAnimationFrame(loop);
+  // Animate only while settling/dragging or when a one-shot redraw was requested
+  // (hover/search/zoom). Otherwise idle at 0% CPU — important on phones.
+  if (state.alive > 0 || state.drag || state._redraw) { state._redraw = false; state.raf = requestAnimationFrame(loop); }
+  else { state.raf = 0; }
 }
-function kick(frames = 220) { state.alive = Math.max(state.alive, frames); }
+function kick(frames = 220) { state.alive = Math.max(state.alive, frames); if (!state.raf) state.raf = requestAnimationFrame(loop); }
+function requestDraw() { state._redraw = true; if (!state.raf) state.raf = requestAnimationFrame(loop); }
 
 // ── interaction ──────────────────────────────────────────────────────────────
 function toWorld(px, py) {
@@ -265,17 +269,17 @@ function wireCanvas() {
       state.view.y = state.drag.oy + (e.clientY - state.drag.sy);
     } else if (mx >= 0 && my >= 0 && mx <= c.clientWidth && my <= c.clientHeight) {
       const n = nodeAt(mx, my);
-      if (n !== state.hover) { state.hover = n; c.style.cursor = n ? 'pointer' : 'grab'; }
+      if (n !== state.hover) { state.hover = n; c.style.cursor = n ? 'pointer' : 'grab'; requestDraw(); }
     }
   });
-  window.addEventListener('mouseup', () => { if (state.drag?.node) kick(60); state.drag = null; });
+  window.addEventListener('mouseup', () => { if (state.drag?.node) kick(60); state.drag = null; requestDraw(); });
   c.onclick = (e) => {
     const r = c.getBoundingClientRect();
     const n = nodeAt(e.clientX - r.left, e.clientY - r.top);
     state.pinned = n && n === state.pinned ? null : n;
-    renderDetail();
+    renderDetail(); requestDraw();
   };
-  c.ondblclick = () => { fitView(); draw(); };
+  c.ondblclick = () => { fitView(); requestDraw(); };
   c.onwheel = (e) => {
     e.preventDefault();
     const r = c.getBoundingClientRect();
@@ -286,6 +290,7 @@ function wireCanvas() {
     const after = toWorld(mx, my);
     state.view.x += (after.x - before.x) * state.view.scale;
     state.view.y += (after.y - before.y) * state.view.scale;
+    requestDraw();
   };
 }
 
@@ -387,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
   wireLegend();
   const search = document.getElementById('mtree-search');
   if (search) {
-    search.addEventListener('input', () => { state.query = search.value.trim().toLowerCase(); });
+    search.addEventListener('input', () => { state.query = search.value.trim().toLowerCase(); requestDraw(); });
     search.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && state.query && state.canvas) {
         const m = state.nodes.find((n) => visible(n) && nodeMatches(n, state.query));
@@ -396,7 +401,7 @@ document.addEventListener('DOMContentLoaded', () => {
           state.view.scale = Math.max(1.1, state.view.scale);
           state.view.x = W / 2 - m.x * state.view.scale;
           state.view.y = H / 2 - m.y * state.view.scale;
-          state.pinned = m; renderDetail();
+          state.pinned = m; renderDetail(); requestDraw();
         }
       }
     });
