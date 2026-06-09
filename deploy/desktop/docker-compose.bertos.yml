@@ -6,7 +6,7 @@
 # auth flags from .env. This overlay only adds what the base file does NOT
 # pass through for a BertOS single-user deploy:
 #   - the memory vault bind mount (app memory's source of truth), and
-#   - the BertOS-specific env (single-user owner + optional brain bridge).
+#   - the BertOS-specific env (single-user owner + the brain bridge).
 #
 # Compose merges same-named services: the volumes below are APPENDED to the
 # base list and the environment keys are MERGED in.
@@ -17,10 +17,6 @@ services:
       # Point BERTOS_VAULT_DIR at the migrated vault (default: ./BertOS-Vault
       # next to the repo). BERTOS_OBSIDIAN_VAULT=/vault makes the app write here.
       - ${BERTOS_VAULT_DIR:-./BertOS-Vault}:/vault:z
-      # OPTIONAL brain tools (Deep Build / Council via MCP). Uncomment this
-      # mount AND the two BERTOS_BRAIN_* lines below, only if the bertosV2
-      # brain runs on this host. The body boots fine without it.
-      # - ${BERTOS_BRAIN_DIR_HOST:-../bertosV2}:/brain:ro
     environment:
       # Memory vault lives at the bind-mount path above. (BERTOS_OBSIDIAN_VAULT
       # is the env var the app actually reads — see src/constants.py.)
@@ -28,7 +24,16 @@ services:
       # Single-user owner reconciliation — keep calendar/CalDAV on the same ""
       # owner as email/memory/brief. Empty value (not unset) is intentional.
       - ODYSSEUS_FALLBACK_OWNER=${ODYSSEUS_FALLBACK_OWNER:-}
-      # OPTIONAL brain tools — reach the native bertosV2 Next server on the
-      # Windows host. Uncomment BERTOS_BRAIN_DIR together with the /brain mount.
-      # - BERTOS_BRAIN_DIR=/brain
+      # ── Brain tools (Council / Deep Build / Auto / build / projects) ──────────
+      # The body spawns the vendored MCP bridge baked into the image at
+      # /app/brain-bridge (no repo mount needed — it only imports 2 pure-JS deps,
+      # installed at build). The bridge HTTP-calls the NATIVE bertosV2 brain on
+      # the host. Start the brain there with `npm run bertos:host`; if it's down,
+      # the brain tools just report "brain down" and the body is unaffected.
+      - BERTOS_BRAIN_DIR=/app/brain-bridge
       - BERTOS_BRAIN_BASE_URL=${BERTOS_BRAIN_BASE_URL:-http://host.docker.internal:3000}
+      - BERTOS_BRAIN_DAEMON_URL=${BERTOS_BRAIN_DAEMON_URL:-http://host.docker.internal:4319}
+      # Subscription power: 1 = let the brain spend your logged-in Claude/Codex/
+      # Gemini CLI subscriptions for Council + Deep Build + build. Auto Mode stays
+      # free regardless. Metered API keys remain off (no surprise billing).
+      - BERTOS_BRAIN_ALLOW_PAID=${BERTOS_BRAIN_ALLOW_PAID:-1}

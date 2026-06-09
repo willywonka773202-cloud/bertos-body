@@ -1,0 +1,12 @@
+{
+  "name": "bertos-brain-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained MCP bridge that exposes the bertosV2 'brain' (Council / Deep Build / Auto / build / projects / providers) to the BertOS body. Vendored into the body image so the Dockerized body can spawn it without mounting the brain repo. Source of truth: ~/Documents/bertosV2/scripts/brain-mcp-server.mjs — keep in sync (see README.md).",
+  "main": "scripts/brain-mcp-server.mjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "3.25.76"
+  }
+}

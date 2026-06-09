@@ -35,6 +35,17 @@ COPY . .
 # Create data directory (mount a volume here for persistence)
 RUN mkdir -p data logs services/cache/search
 
+# BertOS brain bridge (optional): install the bridge's two pure-JS deps so the
+# body can spawn `node /app/brain-bridge/scripts/brain-mcp-server.mjs` to reach
+# the native bertosV2 brain over HTTP (see brain-bridge/README.md). Set
+# BERTOS_BRAIN_DIR=/app/brain-bridge to enable (the desktop deploy overlay does).
+# Build-safe: a failed install must NEVER break the body image — the body skips
+# the bridge gracefully when its deps are missing (src/builtin_mcp.py).
+RUN if [ -f brain-bridge/package.json ]; then \
+      (cd brain-bridge && npm install --omit=dev --no-audit --no-fund) \
+      || echo "WARN: brain-bridge deps install failed — brain tools unavailable"; \
+    fi
+
 # Entrypoint that drops to PUID/PGID (default 1000:1000) and repairs
 # ownership on the bind-mounted /app/data and /app/logs. Without this,
 # the container runs as root and writes root-owned files into host
