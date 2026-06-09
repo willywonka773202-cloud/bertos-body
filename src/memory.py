@@ -120,14 +120,24 @@ def _iso_to_ts(iso) -> int:
 
 def _fallback_scalar(value) -> str:
     """Serialize a scalar for the fallback emitter. Always double-quoted for
-    strings so ':' / leading '-' / '#' can never break the document."""
+    strings so ':' / leading '-' / '#' can never break the document.
+
+    A non-scalar (dict/list) that reaches here — e.g. a dict inside a list, which
+    YAML block style would otherwise need nested handling — is JSON-encoded into
+    ONE quoted scalar instead of being stringified via ``str()``. ``str({'a':1})``
+    yields ``"{'a': 1}"`` (single quotes — NOT valid JSON, unrecoverable), whereas
+    ``json.dumps`` produces a string a reader can parse back, so a list-of-dicts
+    can never silently corrupt on the fallback path."""
     if value is None:
         return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
         return repr(value)
-    s = str(value)
+    if isinstance(value, (dict, list, tuple)):
+        s = json.dumps(value, ensure_ascii=False, default=str)
+    else:
+        s = str(value)
     s = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
     return f'"{s}"'
 
@@ -391,11 +401,27 @@ class MemoryManager:
     """
 
     def __init__(self, data_dir: str, app_dir: Optional[str] = None):
+        # PyYAML is a HARD dependency for the live store: the self-contained
+        # fallback emitter is a last-ditch safety net, not the production path
+        # (it cannot losslessly round-trip every shape). Fail LOUD here rather
+        # than silently degrading frontmatter serialization. It ships in the
+        # venv; a missing import means a broken environment, not a normal mode.
+        if _yaml is None:
+            raise ImportError(
+                "PyYAML is required for MemoryManager frontmatter serialization "
+                "but could not be imported. Install it (it is already pinned in "
+                "requirements / the venv): pip install pyyaml."
+            )
         # Preserve the legacy attribute EXACTLY: memory_extractor.py derives
         # os.path.dirname(self.memory_file) for its sidecar. It stays under
         # data_dir as an empty [] stub; it is no longer the store of truth.
         self.memory_file = os.path.join(data_dir, "memory.json")
         self.app_dir = self._resolve_app_dir(data_dir, app_dir)
+        # Resolve the partition root to its realpath ONCE so the containment
+        # fence (_within_partition) compares symlink-resolved paths on both
+        # sides. A lexical (abspath) compare lets a directory symlink inside the
+        # partition redirect a write outside it; realpath closes that escape.
+        self.app_dir_real = os.path.realpath(self.app_dir)
         self.lock_path = os.path.join(self.app_dir, ".bertos.lock")
         os.makedirs(self.app_dir, exist_ok=True)
         # Create the lockfile right after mkdir so the very first save() never
@@ -896,8 +922,14 @@ class MemoryManager:
                                     pass
 
     def _within_partition(self, path: str) -> bool:
-        """True iff ``path`` resolves strictly inside the app partition."""
-        return os.path.abspath(path).startswith(os.path.abspath(self.app_dir) + os.sep)
+        """True iff ``path`` resolves strictly inside the app partition.
+
+        Uses realpath on BOTH sides so a directory symlink inside the partition
+        cannot redirect a write outside it (a lexical abspath compare would be
+        fooled by such a symlink). ``app_dir_real`` is resolved once in
+        __init__.
+        """
+        return os.path.realpath(path).startswith(self.app_dir_real + os.sep)
 
     def _atomic_write(self, path: str, content: str) -> None:
         """Atomic per-file write: tmp + os.replace, scoped to the partition.

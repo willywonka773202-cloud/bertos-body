@@ -98,6 +98,11 @@ _PAID_HOSTS = (
     "anyscale.com",
     "replicate.com",
     "openai.azure.com",    # Azure OpenAI (*.openai.azure.com)
+    "amazonaws.com",       # AWS Bedrock (bedrock-runtime.<region>.amazonaws.com) — metered.
+                           # Errs toward blocking on the free-first contract: AWS
+                           # has no bedrock-only registrable domain, so the whole
+                           # amazonaws.com family is treated as paid.
+    "cognitiveservices.azure.com",  # Azure AI Services (*.cognitiveservices.azure.com)
 )
 
 # Subscription-backed or local hosts that are FREE at call time. Loopback hosts
@@ -110,13 +115,29 @@ _FREE_HOSTS = (
 )
 
 
+def _with_scheme(base: str) -> str:
+    """Ensure a base URL carries a scheme so urlparse(...).hostname is populated.
+
+    A scheme-less authority like ``api.openai.com/v1`` parses with
+    ``hostname is None`` (urlparse treats it as a path), which makes every
+    hostname-based classifier FAIL OPEN — the host looks unknown, so a paid
+    provider is mis-classified as free. Prepending ``//`` makes urlparse read
+    the leading token as the authority (``urlparse('//host/x').hostname=='host'``)
+    without committing to a protocol.
+    """
+    base = (base or "").strip()
+    if not base:
+        return base
+    return base if "://" in base else "//" + base
+
+
 def _host_is_known_paid(base: str) -> bool:
     """True iff the host is a KNOWN metered provider — the owner's real money
     risk (their cloud API keys). Hostname match (exact/subdomain), not substring."""
     base = (base or "").strip()
     if not base:
         return False
-    return _host_match(base, *_PAID_HOSTS)
+    return _host_match(_with_scheme(base), *_PAID_HOSTS)
 
 
 def _host_is_known_free(base: str) -> bool:
@@ -141,13 +162,13 @@ def _host_is_known_free(base: str) -> bool:
     # Native (local) Ollama is free; Ollama Cloud (ollama.com) is paid (below).
     try:
         from src.llm_core import _is_ollama_native_url
-        if _is_ollama_native_url(base) and not _host_match(base, "ollama.com"):
+        if _is_ollama_native_url(base) and not _host_match(_with_scheme(base), "ollama.com"):
             return True
     except Exception:
         pass
     # Loopback / explicitly-local hosts are free.
     try:
-        host = (urlparse(base).hostname or "").lower().rstrip(".")
+        host = (urlparse(_with_scheme(base)).hostname or "").lower().rstrip(".")
     except Exception:
         host = ""
     return host in _FREE_HOSTS

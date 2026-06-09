@@ -41,5 +41,9 @@ mcp
 pyotp
 qrcode[pil]
 croniter
+# YAML frontmatter for the Obsidian-vault memory backend (src/memory.py). A hard
+# dep (MemoryManager asserts it on init) so the lossy hand-rolled fallback emitter
+# never silently runs in production.
+PyYAML>=6.0
 pytest
 pytest-asyncio

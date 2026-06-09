@@ -281,9 +281,14 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
             # unlink EXACTLY the dropped ids via the race-safe locked
             # delete-by-id. This way a note added concurrently between load and
             # save is neither rewritten away nor orphaned.
+            manager.save(all_memories, delete_orphans=False)
+            # Compute surviving/removed ids from the dicts AFTER save(): save()
+            # may re-mint an unsafe id into a fresh one, so a snapshot taken
+            # before save() could list a survivor's stale id in removed_ids and
+            # unlink the wrong note. Read the post-save ids back off the dicts
+            # (save mutates them in place) so removed_ids reflects re-minting.
             surviving_ids = {m.get("id") for m in all_memories if m.get("id")}
             removed_ids = [mid for mid in original_ids if mid not in surviving_ids]
-            manager.save(all_memories, delete_orphans=False)
             if removed_ids:
                 manager.delete(removed_ids)
             if ai_used:
@@ -1129,7 +1134,7 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
         # Unattended → free_only=True so any optional LLM synthesis stays free.
         try:
             from routes.note_routes import dispatch_reminder
-            await dispatch_reminder(
+            dispatch_result = await dispatch_reminder(
                 title=f"Daily brief — {date_label}",
                 note_body=plain_body,
                 note_id="daily-brief",
@@ -1138,6 +1143,30 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
             )
         except Exception as _e:
             logger.warning(f"daily_brief: reminder dispatch failed: {_e}")
+            return f"{plain_body}\n\n[delivery failed: {_e}]", False
+
+        # Never fake delivery: report failure when the configured channel didn't
+        # actually send. Mirror action_check_email_urgency's per-channel read.
+        from src.settings import load_settings as _load_settings
+        try:
+            _settings = _load_settings()
+        except Exception:
+            _settings = {}
+        channel = (_settings.get("reminder_channel") or "browser").strip().lower()
+        delivered = bool(dispatch_result.get("browser_sent"))
+        if channel == "email":
+            delivered = bool(dispatch_result.get("email_sent"))
+        elif channel == "ntfy":
+            delivered = bool(dispatch_result.get("ntfy_sent"))
+        elif channel == "webhook":
+            delivered = bool(dispatch_result.get("webhook_sent"))
+        if not delivered:
+            err = (
+                dispatch_result.get(f"{channel}_error")
+                or f"no successful delivery on channel {channel!r}"
+            )
+            logger.warning(f"daily_brief: reminder not delivered: {dispatch_result}")
+            return f"{plain_body}\n\n[delivery failed: {err}]", False
 
         return plain_body, True
     except Exception as e:

@@ -267,6 +267,18 @@ def test_host_is_paid_classification():
     assert _host_is_paid("") is False                            # no url -> not a known paid host
 
 
+def test_host_is_paid_scheme_less_url_classified_paid():
+    """H2 regression: a scheme-less base URL must NOT fail open.
+
+    urlparse('api.openai.com/v1').hostname is None (it's parsed as a path), so
+    without prepending a scheme the host looks unknown and a paid provider is
+    mis-classified as free — a real-money leak at the dispatch choke point."""
+    assert _host_is_paid("api.openai.com/v1") is True
+    assert _host_is_paid("openrouter.ai") is True
+    # And the free side stays free without a scheme.
+    assert _host_is_paid("localhost:11434") is False
+
+
 # --- (e) paid entry dropped from _resolve_fallback_candidates ---------------
 
 def test_paid_fallback_candidate_dropped_under_free_only(monkeypatch):

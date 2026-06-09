@@ -240,6 +240,10 @@ def _install_sync_chat_stubs(monkeypatch):
     endpoint_resolver.build_chat_url = lambda base_url: f"{base_url}/chat/completions"
     endpoint_resolver.build_models_url = lambda base_url: f"{base_url}/models"
     endpoint_resolver.build_headers = lambda api_key, base_url: {"Authorization": f"Bearer {api_key}"}
+    # The free-first guardrail (slice 3) makes webhook sync_chat consult these; this
+    # test uses a trusted local endpoint, so the stub never blocks.
+    endpoint_resolver._paid_blocked = lambda ep, free_only=False: False
+    endpoint_resolver._host_paid_blocked = lambda url, free_only=False: False
 
     llm_core = types.ModuleType("src.llm_core")
     llm_core.llm_call_async = _llm_call_async

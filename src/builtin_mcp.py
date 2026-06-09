@@ -101,6 +101,7 @@ _BUILTIN_NODE_SERVERS = {
             "BERTOS_BASE_URL": os.environ.get("BERTOS_BRAIN_BASE_URL", "http://127.0.0.1:3000"),
             "BERTOS_DAEMON_URL": os.environ.get("BERTOS_BRAIN_DAEMON_URL", "http://127.0.0.1:4319"),
             "BRAIN_ALLOW_PAID": os.environ.get("BERTOS_BRAIN_ALLOW_PAID", "0"),
+            "BERTOS_DAEMON_TOKEN": os.environ.get("BERTOS_BRAIN_DAEMON_TOKEN", ""),
         },
     },
 }

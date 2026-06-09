@@ -1110,7 +1110,25 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
     except HTTPException:
         raise
     except Exception:
-        pass
+        # Fail CLOSED: the guard itself errored (classifier bug / import fail).
+        # For a COST guard the safe default is to refuse, not spend — block
+        # unless the kill-switch is explicitly on.
+        try:
+            from src.constants import allow_paid as _allow_paid
+            _switch_on = _allow_paid()
+        except Exception:
+            _switch_on = False
+        if not _switch_on:
+            logger.error(
+                "[guardrail] dispatch guard errored; failing CLOSED "
+                "(BERTOS_ALLOW_PAID off) via llm_call (sync)"
+            )
+            raise HTTPException(
+                402,
+                "Paid-provider guardrail could not verify this dispatch and "
+                "BERTOS_ALLOW_PAID is off — refusing to spend (set "
+                "BERTOS_ALLOW_PAID=1 to allow paid).",
+            )
     h = _provider_headers(_detect_provider(url))
     # Tolerate headers that arrive as a JSON string (some sessions stored them
     # double-encoded) — otherwise h.update() throws "dictionary update sequence
@@ -1290,7 +1308,25 @@ async def llm_call_async(
     except HTTPException:
         raise
     except Exception:
-        pass
+        # Fail CLOSED: the guard itself errored (classifier bug / import fail).
+        # For a COST guard the safe default is to refuse, not spend — block
+        # unless the kill-switch is explicitly on.
+        try:
+            from src.constants import allow_paid as _allow_paid
+            _switch_on = _allow_paid()
+        except Exception:
+            _switch_on = False
+        if not _switch_on:
+            logger.error(
+                "[guardrail] dispatch guard errored; failing CLOSED "
+                "(BERTOS_ALLOW_PAID off) via llm_call_async"
+            )
+            raise HTTPException(
+                402,
+                "Paid-provider guardrail could not verify this dispatch and "
+                "BERTOS_ALLOW_PAID is off — refusing to spend (set "
+                "BERTOS_ALLOW_PAID=1 to allow paid).",
+            )
 
     provider = _detect_provider(url)
     messages_copy = _sanitize_llm_messages(messages)
@@ -1460,7 +1496,14 @@ async def stream_llm(url: str, model: str, messages: List[Dict], temperature: fl
         from src.endpoint_resolver import _host_paid_blocked
         _guard_blocked = _host_paid_blocked(url, free_only=False)
     except Exception:
-        _guard_blocked = False
+        # Fail CLOSED: the guard itself errored (classifier bug / import fail).
+        # For a COST guard the safe default is to refuse unless the kill-switch
+        # is explicitly on.
+        try:
+            from src.constants import allow_paid as _allow_paid
+            _guard_blocked = not _allow_paid()
+        except Exception:
+            _guard_blocked = True
     if _guard_blocked:
         from src.constants import allow_paid as _allow_paid
         logger.error(

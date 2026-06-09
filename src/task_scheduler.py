@@ -1311,7 +1311,22 @@ class TaskScheduler:
                 )
                 endpoint_url, model = self._resolve_defaults(db, task.owner)
         except Exception:
-            pass
+            # Fail CLOSED: scheduled tasks are unattended, so if the guard
+            # itself errored we must not silently spend on a pinned paid
+            # endpoint. Redirect to the free/local default unless the
+            # kill-switch is explicitly on.
+            try:
+                from src.constants import allow_paid as _allow_paid
+                _switch_on = _allow_paid()
+            except Exception:
+                _switch_on = False
+            if not _switch_on:
+                logger.warning(
+                    "[guardrail] task %s guard errored; failing CLOSED — "
+                    "redirecting to free/local default",
+                    getattr(task, "id", "?"),
+                )
+                endpoint_url, model = self._resolve_defaults(db, task.owner)
         if not endpoint_url or not model:
             raise RuntimeError("No model/endpoint configured")
         # Record the resolved model so _execute_task_locked can persist it on
