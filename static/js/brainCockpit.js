@@ -108,12 +108,42 @@ async function render(force) {
   const body = el('cockpit-body');
   if (body && !loaded) body.classList.remove('cockpit-hidden');
   el('cockpit-status') && (el('cockpit-status').innerHTML = '<div class="cockpit-loading">Connecting to your brain…</div>');
-  const [status, fleet, projects, recent, jobs] = await Promise.all([
+  const [status, fleet, projects, auto, recent, jobs] = await Promise.all([
     jget('/api/brain/status'), jget('/api/brain/usage'), jget('/api/brain/projects'),
+    jget('/api/brain/auto-jobs?limit=8'),
     jget('/api/brain/memory/recent?limit=12'), jget('/api/brain/deep-jobs?limit=8'),
   ]);
   loaded = true; loading = false;
-  renderStatus(status); renderFleet(fleet); renderProjects(projects); renderRecent(recent); renderBuilds(jobs);
+  renderStatus(status); renderFleet(fleet); renderProjects(projects); renderAuto(auto); renderRecent(recent); renderBuilds(jobs);
+}
+
+// ── Auto Mode: the self-scheduling night loop. Each row is a per-project
+// build loop with its planner/coder/checker engines + live status. ──
+const AUTO_STATUS = { running: '#3fd17a', queued: '#5b8cff', stopped: '#9aa4b2', paused: '#f0b429', error: '#ff7a6b', done: '#3fd17a' };
+function renderAuto(a) {
+  const box = el('cockpit-auto'); if (!box) return;
+  if (!a || a.ok === false) {
+    box.innerHTML = `<div class="cockpit-empty">Auto Mode unavailable${a && a.code === 'BRAIN_ERROR' ? ' (update the brain to enable)' : ''}.</div>`;
+    return;
+  }
+  const jobs = (a.data || []).slice(0, 8);
+  if (!jobs.length) { box.innerHTML = `<div class="cockpit-empty">No Auto Mode loops yet — the night loop hasn't been armed.</div>`; return; }
+  box.innerHTML = jobs.map((j) => {
+    const c = AUTO_STATUS[j.status] || '#9aa4b2';
+    const live = j.status === 'running' || j.status === 'queued';
+    const roles = j.roles || {};
+    const chain = ['plannerId', 'coderId', 'checkerId'].map((k) => roles[k]).filter(Boolean)
+      .map((id) => ENGINE_LABEL[id] || id);
+    const tasks = Array.isArray(j.taskQueue) ? j.taskQueue.length : 0;
+    return `<div class="cockpit-auto-row">
+      <span class="cockpit-auto-dot${live ? ' live' : ''}" style="background:${c}"></span>
+      <span class="cockpit-auto-main">
+        <span class="cockpit-auto-obj">${esc((j.objective || '').slice(0, 96))}</span>
+        ${chain.length ? `<span class="cockpit-auto-chain">${chain.map(esc).join('<span class="cockpit-auto-arr">→</span>')}</span>` : ''}
+      </span>
+      <span class="cockpit-auto-meta">${esc(j.status || '')}${tasks ? ' · ' + tasks + ' task' + (tasks !== 1 ? 's' : '') : ''}</span>
+    </div>`;
+  }).join('');
 }
 
 // ── Fleet: how the orchestrator routes work across engines, and the

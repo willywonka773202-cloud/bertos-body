@@ -108,4 +108,10 @@ def setup_brain_routes() -> APIRouter:
         proof the orchestrator keeps work cheap (freeShare%, paidTokens, etc.)."""
         return await _brain_get("/api/usage", timeout=10.0)
 
+    @router.get("/auto-jobs")
+    async def brain_auto_jobs(limit: int = 8):
+        """Auto Mode jobs — the self-scheduling night loop's per-project build
+        loops (objective + planner/coder/checker role engines + status)."""
+        return await _brain_get(f"/api/auto/jobs?limit={max(1, min(40, limit))}", timeout=12.0)
+
     return router

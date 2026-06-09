@@ -36795,3 +36795,15 @@ body.theme-frosted .modal {
 .cockpit-fleet-fill.paid { background: linear-gradient(90deg, rgba(240,180,41,0.5), #f0b429); }
 .cockpit-fleet-num { flex: 0 0 auto; font-size: 0.72rem; font-variant-numeric: tabular-nums; opacity: 0.85; min-width: 52px; text-align: right; }
 .cockpit-fleet-calls { opacity: 0.45; margin-left: 5px; font-size: 0.64rem; }
+
+/* ---- Cockpit Auto Mode: the self-scheduling night loop ---- */
+.cockpit-auto-row { display: flex; align-items: flex-start; gap: 9px; padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.cockpit-auto-row:last-child { border-bottom: none; }
+.cockpit-auto-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; margin-top: 4px; }
+.cockpit-auto-dot.live { box-shadow: 0 0 0 0 rgba(63,209,122,0.6); animation: cockpit-auto-pulse 1.8s ease-out infinite; }
+@keyframes cockpit-auto-pulse { 0% { box-shadow: 0 0 0 0 rgba(63,209,122,0.5);} 70% { box-shadow: 0 0 0 7px rgba(63,209,122,0);} 100% { box-shadow: 0 0 0 0 rgba(63,209,122,0);} }
+.cockpit-auto-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cockpit-auto-obj { font-size: 0.8rem; line-height: 1.35; }
+.cockpit-auto-chain { font-size: 0.66rem; opacity: 0.6; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.cockpit-auto-arr { opacity: 0.4; margin: 0 1px; }
+.cockpit-auto-meta { flex: 0 0 auto; font-size: 0.68rem; opacity: 0.55; text-transform: capitalize; white-space: nowrap; text-align: right; }
