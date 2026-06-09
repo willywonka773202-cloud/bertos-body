@@ -1,10 +1,10 @@
 # HANDOFF — BertOS (Odysseus fork)
 
 <!-- State header: keep these 5 lines accurate. Claude reads this first each session and picks up from Next. -->
-- **Version:** 0.2.0
+- **Version:** 0.3.0
 - **Status:** verified-pass
 - **Updated:** 2026-06-08
-- **Next:** **PHASE 1 COMPLETE** (rebrand + cost guardrail + vault memory + daily brief — all run-and-verified, committed on `bertos`). Two small follow-ups owed to the owner: (1) pick the daily-brief delivery channel (self-hosted ntfy on the always-on host / ntfy.sh / in-app browser; interim `reminder_channel=browser`); (2) connect email/calendar so the brief has real content. **Phase 2 = bring the brain via MCP** (master prompt §5): stand up bertosV2's coding brain as an MCP server, register it in `src/builtin_mcp.py`. Live server: `uvicorn app:app` on http://127.0.0.1:7777.
+- **Next:** **PHASE 1 + PHASE 2 (brain integration) COMPLETE & committed.** BertOS is a verified daily-driver body with the bertosV2 coding brain wired in over MCP (6 `mcp__brain__*` tools: council / deep_build(+status/stop) / auto_cycle / health, free-first enforced). **Remaining (owner-watched / fresh-session work):** (1) **live acceptance** — start the brain host (`npm run bertos:host` in bertosV2) and have the BertOS agent run a *real* `brain_deep_build` end-to-end (it edits a repo + git-commits → do it watching, pick the target projectId). (2) Usability: pick the daily-brief channel; connect email/calendar. (3) Phase 3 (master prompt §6): converge/harden, deploy (Docker/PWA) to the always-on host. Cosmetic: `brain_health` daemon probe hits `/` (404) — switch to `/health`. Live body: `uvicorn app:app` on :7777.
 
 ---
 
@@ -18,6 +18,16 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-08 — Claude Code — build+check (Phase 2 B/C/D)
+- **Phase 2 B/C/D DONE & verified — the full brain tool surface is callable from BertOS.** Extended `bertosV2/scripts/brain-mcp-server.mjs` (committed `a4a54c0`) with `brain_council` (POST /api/chat/council), `brain_deep_build` + `_status` + `_stop` (POST/GET/DELETE /api/deep/jobs — job-id + poll, never blocks), `brain_auto_cycle` (POST /api/auto/jobs, hard-forces `unattended:true` → Lane-B/free). Shared `callBrain()`: fails CLOSED `BRAIN_DOWN` when the Next host is down, 409→`PROJECT_BUSY`, optional `BERTOS_DAEMON_TOKEN`. Free-first is belt-and-suspenders over the brain's own `coerceFreeRoles`; `BRAIN_ALLOW_PAID=0` structurally blocks paid engines (council omits paid members; deep_build forced `engine:"strongest"` free; auto forced unattended).
+- Verified: BertOS boots and logs **`BertOS Brain (brain) - 6 tools via stdio`**; MCP smoke test lists all 6; `brain_deep_build_status` returns prior real Deep Build runs. NO real build/auto/council kicked off — the live Deep Build is the owner-watched acceptance (it edits a repo + commits).
+- next: live acceptance run + usability (channel/email/cal) + Phase 3.
+
+### 2026-06-08 — Claude Code — build+check (Phase 2)
+- **Phase 2 slice A DONE & verified — the brain is wired into BertOS via MCP.** Built `~/Documents/bertosV2/scripts/brain-mcp-server.mjs` (stdio MCP, `@modelcontextprotocol/sdk` 1.29) — a THIN HTTP client to the running bertosV2 Next server (NOT a `server-only` lib import, NOT daemon-only), so all brain guardrails stay behind the route boundary. Registered in the body via `_BUILTIN_NODE_SERVERS` + a node-spawn loop in `src/builtin_mcp.py`; `server_id="brain"` (no `builtin_` prefix → `is_builtin()` False → tools surface to function-calling as `mcp__brain__*`). Committed `79839ab` (body) + `7ba8914` (bertosV2). Architecture/slice plan in `docs/bertos/PHASE2-BRAIN-MCP-DESIGN.md`.
+- Verified: standalone MCP smoke test (list_tools → `brain_health` → reachability JSON, with bertosV2 Next already live on :3000); BertOS boot logs `MCP server connected: BertOS Brain (brain) - 1 tools`. Bridge fails closed if the brain host is down; never auto-spawns it. `BRAIN_ALLOW_PAID=0`.
+- **Next (Phase 2 B/C/D):** add `brain_council` (request/response), `brain_deep_build` (POST /api/deep/jobs → job-id + poll/stop), `brain_auto_cycle` (Lane-B, force `unattended:true`) to the bridge — each calls the running bertosV2 route, free-first enforced. Heavy end-to-end (a real Deep Build) is expensive + side-effectful → run it with the owner watching. Brain host: `npm run bertos:host` in bertosV2 (Next :3000 + daemon :4319).
 
 ### 2026-06-08 — Claude Code — build+check
 - **Slice 2 DONE & verified — memory → Obsidian vault. PHASE 1 COMPLETE.** Committed `7d2df0c` (backend) + `7593cf5` (slice-3 test follow-up). App memory is now human-readable `.md` in `<vault>/Memory/bertos/` (one file per memory; native frontmatter id/ts/kind/source/tags + an `extra:` submap round-tripping ALL other keys incl. unknown). MemoryManager fully reimplemented (entire method surface + `self.memory_file` preserved); ChromaDB stays a derived index.
