@@ -10,7 +10,10 @@
 // Self-contained — injects its own DOM into #welcome-screen and wires its own
 // refresh, so memory.js / app.js stay untouched.
 
+import bertOrb from './bertOrb.js';
+
 const API = window.location.origin;
+const USER_NAME = 'Will'; // BertOS is Will's personal OS
 let injected = false;
 let lastLoad = 0;
 let loadingPulse = false;
@@ -37,6 +40,15 @@ function greeting() {
   if (h < 22) return 'Good evening';
   return 'Working late';
 }
+// Bert's opening line — personal, time-aware, a touch of character.
+function bertLine() {
+  const h = new Date().getHours();
+  if (h < 5) return `Late one, ${USER_NAME}? I never sleep — what are we building?`;
+  if (h < 12) return `Bert here — tap the orb and tell me what you need.`;
+  if (h < 17) return `Bert here — what are we working on?`;
+  if (h < 22) return `Bert here — I've been keeping things warm.`;
+  return `Bert here — winding down, or one more thing?`;
+}
 
 // Open the Brain modal and switch to a given tab (tree | cockpit | …).
 function openBrainTab(tab) {
@@ -61,7 +73,11 @@ const KIND_ICON = { decision: '◆', fact: '•', artifact: '▣', plan: '◇', 
 function shell() {
   // The deck markup. Injected once, right after the welcome sub-line.
   return `
-  <div class="deck-greeting"><span id="deck-hello">${esc(greeting())}.</span> <span class="deck-greeting-sub">Here's your brain.</span></div>
+  <div class="deck-greeting">
+    <div class="deck-hello-line"><span id="deck-hello">${esc(greeting())}, ${esc(USER_NAME)}.</span></div>
+    <div class="deck-bert-line" id="deck-bert-line">${esc(bertLine())}</div>
+    <div class="deck-context" id="deck-context"></div>
+  </div>
 
   <div class="deck-pulse" id="deck-pulse">
     <div class="deck-card deck-card-brain" data-go="cockpit" title="Open the Cockpit">
@@ -110,7 +126,7 @@ function shell() {
   </div>
 
   <div class="deck-next">
-    <button class="deck-next-btn" id="deck-next-btn">✨ What should I work on?</button>
+    <button class="deck-next-btn" id="deck-next-btn">✨ Bert, what should I work on?</button>
     <div class="deck-next-out" id="deck-next-out"></div>
   </div>`;
 }
@@ -149,6 +165,11 @@ function inject() {
   host.id = 'home-deck';
   host.className = 'home-deck';
   host.innerHTML = shell();
+  // The Bert orb is the hero — prepend it above the greeting.
+  try {
+    const orbEl = bertOrb.build();
+    if (orbEl) host.insertBefore(orbEl, host.firstChild);
+  } catch (e) { /* orb is enhancement-only; never block the deck */ }
   // Place it after the tip line but before the incognito button so the deck is
   // the visual centerpiece and the Nobody toggle stays at the bottom.
   const anchor = document.getElementById('welcome-tip') || document.getElementById('welcome-sub');
@@ -164,6 +185,24 @@ function renderPulse(status, recent, jobs) {
   const buildsVal = document.getElementById('deck-builds-val');
   const memVal = document.getElementById('deck-mem-val');
   const up = status && status.ok !== false && status.up !== false;
+
+  // Bert's context line under the greeting — what he's been up to.
+  const ctx = document.getElementById('deck-context');
+  if (ctx) {
+    if (up) {
+      const live = (status.engines || []).filter((e) => e.online).length;
+      const runs = (jobs && jobs.ok !== false) ? (jobs.data || []) : [];
+      const builtToday = runs.filter((r) => r.status === 'done' && isToday(r.finishedAt || r.startedAt)).length;
+      const notes = (recent && recent.ok !== false) ? ((recent.data || {}).notes || []) : [];
+      const memToday = notes.filter((n) => isToday(n.ts)).length;
+      const parts = [`${live} engine${live !== 1 ? 's' : ''} warm`];
+      if (builtToday) { const h = new Date().getHours(); parts.push(`${builtToday} built ${h < 11 ? 'while you slept' : 'today'}`); }
+      if (memToday) parts.push(`${memToday} new memor${memToday !== 1 ? 'ies' : 'y'} logged`);
+      ctx.textContent = parts.join(' · ');
+    } else {
+      ctx.textContent = "my brain's asleep — wake it to come fully online";
+    }
+  }
 
   if (brainVal) {
     if (up) {
@@ -288,17 +327,17 @@ async function suggestNext() {
   const out = document.getElementById('deck-next-out');
   const btn = document.getElementById('deck-next-btn');
   if (!out) return;
-  out.innerHTML = `<div class="deck-next-loading">Thinking about your projects… (free model, ~30s)</div>`;
-  if (btn) { btn.disabled = true; btn.textContent = '✨ Thinking…'; }
+  out.innerHTML = `<div class="deck-next-loading">Bert's thinking it over… (free model, ~30s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '✨ Bert is thinking…'; }
   const r = await jget('/api/brain/recommend', 130000);
-  if (btn) { btn.disabled = false; btn.textContent = '✨ What should I work on?'; }
+  if (btn) { btn.disabled = false; btn.textContent = '✨ Bert, what should I work on?'; }
   if (!r || r.ok === false) {
-    out.innerHTML = `<div class="deck-next-empty">${r && r.code === 'BRAIN_DOWN' ? 'Wake your brain to get suggestions.' : 'No suggestions right now' + (r && r.code === 'BRAIN_ERROR' ? ' (update the brain to enable).' : '.')}</div>`;
+    out.innerHTML = `<div class="deck-next-empty">${r && r.code === 'BRAIN_DOWN' ? "Wake my brain and I'll have ideas for you." : "I've got nothing pressing right now" + (r && r.code === 'BRAIN_ERROR' ? ' (update the brain to enable this).' : '.')}</div>`;
     return;
   }
   const recs = ((r.data || {}).recommendations || []).slice(0, 3);
-  if (!recs.length) { out.innerHTML = `<div class="deck-next-empty">Nothing pressing — you're caught up.</div>`; return; }
-  out.innerHTML = recs.map((x) => `
+  if (!recs.length) { out.innerHTML = `<div class="deck-next-empty">You're all caught up, ${esc(USER_NAME)}. Nothing pressing.</div>`; return; }
+  out.innerHTML = `<div class="deck-rec-intro">Here's what I'd tackle, ${esc(USER_NAME)}:</div>` + recs.map((x) => `
     <div class="deck-rec">
       <div class="deck-rec-head"><span class="deck-rec-type">${esc(x.type || 'idea')}</span>${x.projectName ? `<span class="deck-rec-proj">${esc(x.projectName)}</span>` : ''}<span class="deck-rec-impact i-${esc(x.impact || 'medium')}">${esc(x.impact || '')}</span></div>
       <div class="deck-rec-title">${esc(x.title || '')}</div>
