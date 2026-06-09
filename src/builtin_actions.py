@@ -1109,6 +1109,22 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
 
         plain_body = "\n".join(plain)
 
+        # Push the digest via the configured reminder channel (browser/email/
+        # ntfy/webhook). Call dispatch_reminder DIRECTLY in-process — the HTTP
+        # /trigger route 401s the background scheduler (no session cookie).
+        # Unattended → free_only=True so any optional LLM synthesis stays free.
+        try:
+            from routes.note_routes import dispatch_reminder
+            await dispatch_reminder(
+                title=f"Daily brief — {date_label}",
+                note_body=plain_body,
+                note_id="daily-brief",
+                owner=owner or "",
+                free_only=True,
+            )
+        except Exception as _e:
+            logger.warning(f"daily_brief: reminder dispatch failed: {_e}")
+
         return plain_body, True
     except Exception as e:
         logger.error(f"daily_brief action failed: {e}")

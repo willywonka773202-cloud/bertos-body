@@ -477,12 +477,19 @@ async def dispatch_reminder(
                 base = intg["base_url"].rstrip("/")
                 topic = settings.get("reminder_ntfy_topic") or "reminders"
                 ntfy_body = synthesis or note_body or title
-                hdrs = {"Title": title or "Reminder", "Priority": "high", "Tags": "bell"}
+                # ntfy headers must be ASCII/latin-1 — a Unicode Title (e.g. the
+                # em-dash in "Daily brief —") raises an encode error and drops the
+                # whole push. Sanitize the Title to ASCII; the full Unicode text is
+                # preserved in the UTF-8 body below.
+                _safe_title = ((title or "Reminder")
+                               .replace("—", "-").replace("–", "-")
+                               .encode("ascii", "replace").decode("ascii"))
+                hdrs = {"Title": _safe_title, "Priority": "high", "Tags": "bell"}
                 api_key = intg.get("api_key", "")
                 if api_key:
                     hdrs["Authorization"] = f"Bearer {api_key}"
                 async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.post(f"{base}/{topic}", content=ntfy_body, headers=hdrs)
+                    resp = await client.post(f"{base}/{topic}", content=ntfy_body.encode("utf-8"), headers=hdrs)
                     ntfy_sent = resp.is_success
                     if not ntfy_sent:
                         ntfy_error = f"ntfy returned HTTP {resp.status_code}"
