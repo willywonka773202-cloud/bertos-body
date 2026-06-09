@@ -347,7 +347,7 @@ function renderDetail() {
   const n = state.pinned;
   if (!n) { box.classList.add('hidden'); box.innerHTML = ''; return; }
   const st = TYPE_STYLE[n.type] || TYPE_STYLE.default;
-  const when = n.ts ? new Date(n.ts).toLocaleString() : '';
+  const when = n.ts && !isNaN(new Date(n.ts)) ? new Date(n.ts).toLocaleString() : '';
   const tags = (n.tags || []).map((t) => `<span class="mtree-chip">${esc(t)}</span>`).join('');
   const nbrs = neighborsOf(n);
   const nbrChips = nbrs.slice(0, 16).map((o) => {

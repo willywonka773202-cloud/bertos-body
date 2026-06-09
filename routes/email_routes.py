@@ -1004,8 +1004,11 @@ def setup_email_routes():
     # the real number. Offloaded to a thread, 60s cache, fails soft.
     _unread_cache: dict = {}
 
-    def _unread_count_sync() -> int:
-        conn = _imap_connect(None)
+    def _unread_count_sync(owner: str = "") -> int:
+        # SECURITY: pass `owner` so the fallback config lookup is scoped to this
+        # user (mirrors _imap_connect's documented contract) — a user with no
+        # configured account must never connect to another user's mailbox.
+        conn = _imap_connect(None, owner=owner)
         try:
             conn.select("INBOX", readonly=True)
             status, data = conn.search(None, "UNSEEN")
@@ -1026,7 +1029,7 @@ def setup_email_routes():
         if hit and now - hit[0] < 60:
             return {"ok": True, "count": hit[1], "cached": True}
         try:
-            count = await _asyncio.to_thread(_unread_count_sync)
+            count = await _asyncio.to_thread(_unread_count_sync, key)
         except Exception as e:
             logger.debug(f"unread-count failed: {e}")
             return {"ok": False, "error": "imap_unavailable"}

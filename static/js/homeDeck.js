@@ -261,7 +261,7 @@ async function loadDay(force) {
       // Find the next event still ahead today, else the first.
       const parsed = evs.map((e) => ({ e, t: new Date(e.start || e.dtstart || e.when || 0) }))
         .filter((o) => !isNaN(o.t)).sort((a, b) => a.t - b.t);
-      const next = parsed.find((o) => o.t >= now) || parsed[0];
+      const next = parsed.length ? (parsed.find((o) => o.t >= now) || parsed[0]) : null;
       const title = (next && (next.e.summary || next.e.title || next.e.subject)) || 'event';
       const tm = next && !isNaN(next.t) && next.t > 0 ? fmtTime(next.t) + ' ' : '';
       calTxt.innerHTML = `<strong>${tm}${esc(String(title).slice(0, 26))}</strong>${evs.length > 1 ? ` <span class="deck-day-more">+${evs.length - 1}</span>` : ''}`;

@@ -1151,7 +1151,10 @@ async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
 
             def _recent_ts(ts):
                 try:
-                    return _dt.fromisoformat(str(ts).replace("Z", "+00:00")).replace(tzinfo=None) >= _since
+                    # Brain timestamps are UTC ("…Z"); convert to local before
+                    # stripping tz so the comparison against the naive-local
+                    # _since is correct regardless of server timezone.
+                    return _dt.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone().replace(tzinfo=None) >= _since
                 except Exception:
                     return False
 
