@@ -36659,6 +36659,26 @@ body.theme-frosted .modal {
 .deck-card.is-on { border-color: rgba(63,209,122,0.35); }
 .deck-card.is-off { opacity: 0.78; }
 
+/* ---- Today strip: real calendar + inbox ---- */
+.deck-day { display: flex; gap: 10px; }
+.deck-day-seg {
+  pointer-events: auto;
+  flex: 1 1 0;
+  display: inline-flex; align-items: center; gap: 8px;
+  min-width: 0;
+  font-size: 0.8rem; color: var(--text, #e8eaed);
+  padding: 9px 13px; border-radius: 12px; cursor: pointer; text-align: left;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.deck-day-seg:hover { background: rgba(88,132,255,0.1); border-color: rgba(88,132,255,0.32); transform: translateY(-1px); }
+.deck-day-seg span:last-child { overflow: hidden; text-overflow: ellipsis; }
+.deck-day-seg strong { font-weight: 650; }
+.deck-day-i { font-size: 0.95rem; opacity: 0.85; flex: 0 0 auto; }
+.deck-day-more { opacity: 0.5; font-size: 0.72rem; }
+
 /* ---- activity ticker ---- */
 .deck-ticker-wrap {
   position: relative;

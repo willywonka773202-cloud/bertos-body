@@ -999,6 +999,40 @@ def setup_email_routes():
             _list_cache_put(ck, result)
         return result
 
+    # Accurate INBOX unread total via IMAP SEARCH UNSEEN — the /list endpoint
+    # caps at its page size, so the morning view (HomeDeck) needs this to show
+    # the real number. Offloaded to a thread, 60s cache, fails soft.
+    _unread_cache: dict = {}
+
+    def _unread_count_sync() -> int:
+        conn = _imap_connect(None)
+        try:
+            conn.select("INBOX", readonly=True)
+            status, data = conn.search(None, "UNSEEN")
+            uids = (data[0].split() if status == "OK" and data and data[0] else [])
+            return len(uids)
+        finally:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+
+    @router.get("/unread-count")
+    async def email_unread_count(owner: str = Depends(require_owner)):
+        """INBOX unread count (IMAP SEARCH UNSEEN), cached 60s, fails soft."""
+        key = owner or ""
+        now = _time.time()
+        hit = _unread_cache.get(key)
+        if hit and now - hit[0] < 60:
+            return {"ok": True, "count": hit[1], "cached": True}
+        try:
+            count = await _asyncio.to_thread(_unread_count_sync)
+        except Exception as e:
+            logger.debug(f"unread-count failed: {e}")
+            return {"ok": False, "error": "imap_unavailable"}
+        _unread_cache[key] = (now, count)
+        return {"ok": True, "count": count, "cached": False}
+
     @router.post("/{uid}/unflag-spam")
     async def unflag_spam(uid: str, owner: str = Depends(require_owner)):
         """User override — mark email as not spam."""

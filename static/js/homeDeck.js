@@ -86,6 +86,15 @@ function shell() {
     </div>
   </div>
 
+  <div class="deck-day" id="deck-day" style="display:none">
+    <button class="deck-day-seg" data-act="calendar" title="Open your calendar">
+      <span class="deck-day-i">📅</span><span id="deck-day-cal">…</span>
+    </button>
+    <button class="deck-day-seg" data-act="email" title="Open your inbox">
+      <span class="deck-day-i">✉</span><span id="deck-day-mail">…</span>
+    </button>
+  </div>
+
   <div class="deck-ticker-wrap" id="deck-ticker-wrap" style="display:none">
     <span class="deck-ticker-tag">live</span>
     <div class="deck-ticker" id="deck-ticker"></div>
@@ -115,8 +124,8 @@ function wire(root) {
       else if (go === 'builds') openBrainTab('cockpit');
     };
   });
-  // Launch tiles.
-  root.querySelectorAll('.deck-tile[data-act]').forEach((b) => {
+  // Launch tiles + the Today strip segments (same act vocabulary).
+  root.querySelectorAll('.deck-tile[data-act], .deck-day-seg[data-act]').forEach((b) => {
     b.onclick = () => {
       const a = b.dataset.act;
       if (a === 'newchat') clickIf('sidebar-new-chat-btn');
@@ -218,6 +227,61 @@ async function loadPulse(force) {
   lastLoad = Date.now();
   loadingPulse = false;
   renderPulse(status, recent, jobs);
+  loadDay(force);
+}
+
+// ── Today strip: real calendar + inbox, straight from the body (works even
+// when the brain is off — these are native body endpoints). ──
+let lastDay = 0;
+function pad2(n) { return String(n).padStart(2, '0'); }
+function fmtTime(d) {
+  let h = d.getHours(); const m = d.getMinutes(); const ap = h < 12 ? 'am' : 'pm';
+  h = h % 12; if (h === 0) h = 12;
+  return m ? `${h}:${pad2(m)}${ap}` : `${h}${ap}`;
+}
+async function loadDay(force) {
+  const strip = document.getElementById('deck-day');
+  if (!strip) return;
+  if (!force && Date.now() - lastDay < 20000) return;
+  lastDay = Date.now();
+  const now = new Date();
+  const start = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T00:00:00`;
+  const end = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T23:59:59`;
+  const [cal, mail] = await Promise.all([
+    jget(`/api/calendar/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, 9000),
+    jget('/api/email/unread-count', 9000),
+  ]);
+  const calTxt = document.getElementById('deck-day-cal');
+  const mailTxt = document.getElementById('deck-day-mail');
+  let shown = false;
+
+  if (calTxt) {
+    const evs = (cal && (cal.events || cal.data)) || [];
+    if (Array.isArray(evs) && evs.length) {
+      // Find the next event still ahead today, else the first.
+      const parsed = evs.map((e) => ({ e, t: new Date(e.start || e.dtstart || e.when || 0) }))
+        .filter((o) => !isNaN(o.t)).sort((a, b) => a.t - b.t);
+      const next = parsed.find((o) => o.t >= now) || parsed[0];
+      const title = (next && (next.e.summary || next.e.title || next.e.subject)) || 'event';
+      const tm = next && !isNaN(next.t) && next.t > 0 ? fmtTime(next.t) + ' ' : '';
+      calTxt.innerHTML = `<strong>${tm}${esc(String(title).slice(0, 26))}</strong>${evs.length > 1 ? ` <span class="deck-day-more">+${evs.length - 1}</span>` : ''}`;
+      shown = true;
+    } else {
+      calTxt.textContent = 'No events today';
+      shown = true;
+    }
+  }
+
+  if (mailTxt) {
+    if (mail && mail.ok && typeof mail.count === 'number') {
+      mailTxt.innerHTML = `<strong>${mail.count.toLocaleString()}</strong> unread`;
+      shown = true;
+    } else {
+      mailTxt.textContent = 'Inbox';
+    }
+  }
+
+  strip.style.display = shown ? '' : 'none';
 }
 
 async function suggestNext() {
