@@ -1850,7 +1850,7 @@ body.bg-pattern-sparkles {
     #welcome-screen.has-deck {
       top: 0;
       transform: translateX(-50%);
-      height: calc(100% - 142px);
+      height: calc(100% - 172px);
       justify-content: flex-start;
       padding-top: 3vh;
       padding-bottom: 14px;
