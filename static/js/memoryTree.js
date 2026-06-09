@@ -31,6 +31,7 @@ const state = {
   query: '',
   view: { x: 0, y: 0, scale: 1 },
   alive: 0, // frames of remaining "heat"
+  scope: null, // null = all memories; else { projectId, name } → graph scoped to one project
   hover: null,
   pinned: null,
   drag: null, // { node } | { pan:true, sx, sy, ox, oy }
@@ -50,9 +51,30 @@ function themed(varName, fallback) {
 function el(id) { return document.getElementById(id); }
 
 async function fetchGraph() {
-  const res = await fetch(`${API}/api/brain/memory/graph`, { cache: 'no-store' });
+  let url = `${API}/api/brain/memory/graph`;
+  if (state.scope && state.scope.projectId) {
+    url += `?scope=project&projectId=${encodeURIComponent(state.scope.projectId)}`;
+  }
+  const res = await fetch(url, { cache: 'no-store' });
   const j = await res.json();
   return j;
+}
+// Reload the graph scoped to one project (or back to all when projectId is null).
+function scopeTo(projectId, name) {
+  state.scope = projectId ? { projectId, name: name || projectId } : null;
+  state.pinned = null;
+  state.loaded = false;
+  renderScopePill();
+  render(true);
+}
+function renderScopePill() {
+  const pill = el('mtree-scope-clear');
+  const nm = el('mtree-scope-name');
+  if (!pill) return;
+  if (state.scope) {
+    if (nm) nm.textContent = '⊙ ' + (state.scope.name || 'project');
+    pill.classList.remove('hidden');
+  } else pill.classList.add('hidden');
 }
 
 function buildModel(graph) {
@@ -332,6 +354,8 @@ function renderDetail() {
     const os = TYPE_STYLE[o.type] || TYPE_STYLE.default;
     return `<button class="mtree-nbr" data-nid="${esc(o.id)}" title="${esc(o.label || '')}"><span class="mtree-dot" style="background:${os.fill}"></span>${esc((o.label || '').slice(0, 30))}</button>`;
   }).join('');
+  // A project node can scope the whole graph to just its subgraph.
+  const canScope = n.type === 'project' && n.projectId && (!state.scope || state.scope.projectId !== n.projectId);
   box.classList.remove('hidden');
   box.innerHTML = `
     <div class="mtree-detail-head"><span class="mtree-dot" style="background:${st.fill}"></span>
@@ -339,9 +363,11 @@ function renderDetail() {
       <button id="mtree-detail-x" title="Close">✕</button></div>
     <div class="mtree-detail-meta">${esc(n.type)}${n.kind ? ' · ' + esc(n.kind) : ''}${n.source ? ' · ' + esc(n.source) : ''}${when ? ' · ' + esc(when) : ''} · ${n.degree} links</div>
     ${n.preview ? `<div class="mtree-detail-body">${esc(n.preview).slice(0, 600)}</div>` : ''}
+    ${canScope ? `<button class="mtree-focus-btn" id="mtree-focus-proj">⊙ Focus this project</button>` : ''}
     ${tags ? `<div class="mtree-chips">${tags}</div>` : ''}
     ${nbrChips ? `<div class="mtree-nbr-label">Connected${nbrs.length > 16 ? ' · ' + nbrs.length : ''}</div><div class="mtree-nbrs">${nbrChips}</div>` : ''}`;
   const x = el('mtree-detail-x'); if (x) x.onclick = () => { state.pinned = null; renderDetail(); requestDraw(); };
+  const fp = el('mtree-focus-proj'); if (fp) fp.onclick = () => scopeTo(n.projectId, n.label);
   box.querySelectorAll('.mtree-nbr[data-nid]').forEach((b) => {
     b.onclick = () => { const o = state.byId.get(b.dataset.nid); if (o) focusNode(o); };
   });
@@ -422,6 +448,8 @@ window.addEventListener('resize', () => { if (state.canvas) { resize(); draw(); 
 document.addEventListener('DOMContentLoaded', () => {
   const tab = document.querySelector('.memory-tab[data-memory-tab="tree"]');
   if (tab) tab.addEventListener('click', () => setTimeout(() => render(false), 30));
+  const scopeClear = document.getElementById('mtree-scope-clear');
+  if (scopeClear) scopeClear.onclick = () => scopeTo(null);
   wireLegend();
   const search = document.getElementById('mtree-search');
   if (search) {
