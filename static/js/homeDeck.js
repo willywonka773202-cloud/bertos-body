@@ -1,0 +1,278 @@
+// homeDeck.js — the ambient "command center" that greets you on the BertOS
+// welcome screen. It turns the empty new-chat state into a glanceable Jarvis
+// deck: a time-aware greeting, the brain's live pulse (engines online, builds
+// shipped today, new memories today), a scrolling activity ticker, quick-launch
+// tiles into every panel, and an on-demand "what should I work on?" pass.
+//
+// Everything binds to the body's read-only /api/brain proxy (already verified)
+// and degrades gracefully: brain offline → the deck still shows the greeting +
+// launch tiles, with a soft "wake your brain" note instead of live stats.
+// Self-contained — injects its own DOM into #welcome-screen and wires its own
+// refresh, so memory.js / app.js stay untouched.
+
+const API = window.location.origin;
+let injected = false;
+let lastLoad = 0;
+let loadingPulse = false;
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
+}
+async function jget(path, timeoutMs) {
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), timeoutMs || 12000);
+  try {
+    const r = await fetch(API + path, { cache: 'no-store', signal: ctl.signal });
+    return await r.json();
+  } catch (e) {
+    return { ok: false, code: 'NET', error: String(e) };
+  } finally { clearTimeout(t); }
+}
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Still up';
+  if (h < 12) return 'Good morning';
+  if (h < 17) return 'Good afternoon';
+  if (h < 22) return 'Good evening';
+  return 'Working late';
+}
+
+// Open the Brain modal and switch to a given tab (tree | cockpit | …).
+function openBrainTab(tab) {
+  document.getElementById('tool-memory-btn')?.click();
+  setTimeout(() => {
+    const t = document.querySelector(`.memory-tab[data-memory-tab="${tab}"]`);
+    if (t) t.click();
+  }, 60);
+}
+function clickIf(id) { const e = document.getElementById(id); if (e) e.click(); }
+
+function isToday(ts) {
+  if (!ts) return false;
+  const d = new Date(ts);
+  if (isNaN(d)) return false;
+  const n = new Date();
+  return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+}
+
+const KIND_ICON = { decision: '◆', fact: '•', artifact: '▣', plan: '◇', note: '·' };
+
+function shell() {
+  // The deck markup. Injected once, right after the welcome sub-line.
+  return `
+  <div class="deck-greeting"><span id="deck-hello">${esc(greeting())}.</span> <span class="deck-greeting-sub">Here's your brain.</span></div>
+
+  <div class="deck-pulse" id="deck-pulse">
+    <div class="deck-card deck-card-brain" data-go="cockpit" title="Open the Cockpit">
+      <div class="deck-card-icon">🧠</div>
+      <div class="deck-card-val" id="deck-brain-val">…</div>
+      <div class="deck-card-label">Brain</div>
+    </div>
+    <div class="deck-card" data-go="builds" title="See what your AI built">
+      <div class="deck-card-icon">⚒</div>
+      <div class="deck-card-val" id="deck-builds-val">·</div>
+      <div class="deck-card-label">Built today</div>
+    </div>
+    <div class="deck-card" data-go="tree" title="Open the Memory Tree">
+      <div class="deck-card-icon">✦</div>
+      <div class="deck-card-val" id="deck-mem-val">·</div>
+      <div class="deck-card-label">Memories</div>
+    </div>
+    <div class="deck-card deck-card-map" data-go="tree" title="Open the Memory Tree">
+      <div class="deck-card-icon">🕸</div>
+      <div class="deck-card-val deck-card-val-sm">Memory&nbsp;Tree</div>
+      <div class="deck-card-label">explore the graph</div>
+    </div>
+  </div>
+
+  <div class="deck-ticker-wrap" id="deck-ticker-wrap" style="display:none">
+    <span class="deck-ticker-tag">live</span>
+    <div class="deck-ticker" id="deck-ticker"></div>
+  </div>
+
+  <div class="deck-launch">
+    <button class="deck-tile" data-act="newchat"><span class="deck-tile-i">＋</span>New chat</button>
+    <button class="deck-tile" data-act="tree"><span class="deck-tile-i">🕸</span>Memory Tree</button>
+    <button class="deck-tile" data-act="cockpit"><span class="deck-tile-i">🧠</span>Cockpit</button>
+    <button class="deck-tile" data-act="calendar"><span class="deck-tile-i">📅</span>Calendar</button>
+    <button class="deck-tile" data-act="email"><span class="deck-tile-i">✉</span>Email</button>
+    <button class="deck-tile" data-act="tasks"><span class="deck-tile-i">◷</span>Tasks</button>
+  </div>
+
+  <div class="deck-next">
+    <button class="deck-next-btn" id="deck-next-btn">✨ What should I work on?</button>
+    <div class="deck-next-out" id="deck-next-out"></div>
+  </div>`;
+}
+
+function wire(root) {
+  // Pulse cards.
+  root.querySelectorAll('.deck-card[data-go]').forEach((c) => {
+    c.onclick = () => {
+      const go = c.dataset.go;
+      if (go === 'tree' || go === 'cockpit') openBrainTab(go);
+      else if (go === 'builds') openBrainTab('cockpit');
+    };
+  });
+  // Launch tiles.
+  root.querySelectorAll('.deck-tile[data-act]').forEach((b) => {
+    b.onclick = () => {
+      const a = b.dataset.act;
+      if (a === 'newchat') clickIf('sidebar-new-chat-btn');
+      else if (a === 'tree') openBrainTab('tree');
+      else if (a === 'cockpit') openBrainTab('cockpit');
+      else if (a === 'calendar') clickIf('tool-calendar-btn');
+      else if (a === 'email') clickIf('email-section-title');
+      else if (a === 'tasks') clickIf('tool-tasks-btn');
+    };
+  });
+  // On-demand recommendation.
+  const nb = root.querySelector('#deck-next-btn');
+  if (nb) nb.onclick = suggestNext;
+}
+
+function inject() {
+  if (injected) return true;
+  const ws = document.getElementById('welcome-screen');
+  if (!ws) return false;
+  const host = document.createElement('div');
+  host.id = 'home-deck';
+  host.className = 'home-deck';
+  host.innerHTML = shell();
+  // Place it after the tip line but before the incognito button so the deck is
+  // the visual centerpiece and the Nobody toggle stays at the bottom.
+  const anchor = document.getElementById('welcome-tip') || document.getElementById('welcome-sub');
+  if (anchor && anchor.parentNode === ws) anchor.insertAdjacentElement('afterend', host);
+  else ws.appendChild(host);
+  wire(host);
+  injected = true;
+  return true;
+}
+
+function renderPulse(status, recent, jobs) {
+  const brainVal = document.getElementById('deck-brain-val');
+  const buildsVal = document.getElementById('deck-builds-val');
+  const memVal = document.getElementById('deck-mem-val');
+  const up = status && status.ok !== false && status.up !== false;
+
+  if (brainVal) {
+    if (up) {
+      const live = (status.engines || []).filter((e) => e.online).length;
+      brainVal.innerHTML = `<span class="deck-on">●</span> ${live}`;
+      brainVal.parentElement?.classList.add('is-on');
+      brainVal.parentElement?.classList.remove('is-off');
+    } else {
+      brainVal.innerHTML = `<span class="deck-off">●</span> off`;
+      brainVal.parentElement?.classList.add('is-off');
+      brainVal.parentElement?.classList.remove('is-on');
+    }
+  }
+
+  // Builds shipped today (Deep Build runs done, finished today).
+  if (buildsVal) {
+    if (jobs && jobs.ok !== false) {
+      const runs = jobs.data || [];
+      const n = runs.filter((r) => r.status === 'done' && isToday(r.finishedAt || r.startedAt)).length;
+      buildsVal.textContent = String(n);
+    } else buildsVal.textContent = up ? '0' : '·';
+  }
+
+  // New memories today / total.
+  if (memVal) {
+    if (recent && recent.ok !== false) {
+      const notes = (recent.data || {}).notes || [];
+      const today = notes.filter((n) => isToday(n.ts)).length;
+      memVal.innerHTML = `${today}<span class="deck-card-val-sub">new</span>`;
+    } else memVal.textContent = up ? '0' : '·';
+  }
+
+  // Ticker — most recent durable memories, scrolling.
+  const tickerWrap = document.getElementById('deck-ticker-wrap');
+  const ticker = document.getElementById('deck-ticker');
+  if (ticker && recent && recent.ok !== false) {
+    const notes = ((recent.data || {}).notes || []).slice(0, 14);
+    if (notes.length) {
+      const items = notes.map((n) => {
+        const ic = KIND_ICON[n.kind] || '·';
+        return `<span class="deck-tick-item"><span class="deck-tick-ic">${ic}</span>${esc((n.preview || '').slice(0, 90))}</span>`;
+      });
+      // Duplicate once for a seamless marquee loop.
+      ticker.innerHTML = `<div class="deck-tick-run">${items.join('<span class="deck-tick-sep">•</span>')}${items.length > 3 ? '<span class="deck-tick-sep">•</span>' + items.join('<span class="deck-tick-sep">•</span>') : ''}</div>`;
+      if (tickerWrap) tickerWrap.style.display = '';
+    } else if (tickerWrap) tickerWrap.style.display = 'none';
+  } else if (tickerWrap) tickerWrap.style.display = 'none';
+}
+
+async function loadPulse(force) {
+  if (!inject()) return;
+  if (loadingPulse) return;
+  // Throttle: don't refetch more than every 20s unless forced.
+  if (!force && Date.now() - lastLoad < 20000) return;
+  loadingPulse = true;
+  const [status, recent, jobs] = await Promise.all([
+    jget('/api/brain/status', 7000),
+    jget('/api/brain/memory/recent?limit=14', 9000),
+    jget('/api/brain/deep-jobs?limit=20', 9000),
+  ]);
+  lastLoad = Date.now();
+  loadingPulse = false;
+  renderPulse(status, recent, jobs);
+}
+
+async function suggestNext() {
+  const out = document.getElementById('deck-next-out');
+  const btn = document.getElementById('deck-next-btn');
+  if (!out) return;
+  out.innerHTML = `<div class="deck-next-loading">Thinking about your projects… (free model, ~30s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '✨ Thinking…'; }
+  const r = await jget('/api/brain/recommend', 130000);
+  if (btn) { btn.disabled = false; btn.textContent = '✨ What should I work on?'; }
+  if (!r || r.ok === false) {
+    out.innerHTML = `<div class="deck-next-empty">${r && r.code === 'BRAIN_DOWN' ? 'Wake your brain to get suggestions.' : 'No suggestions right now' + (r && r.code === 'BRAIN_ERROR' ? ' (update the brain to enable).' : '.')}</div>`;
+    return;
+  }
+  const recs = ((r.data || {}).recommendations || []).slice(0, 3);
+  if (!recs.length) { out.innerHTML = `<div class="deck-next-empty">Nothing pressing — you're caught up.</div>`; return; }
+  out.innerHTML = recs.map((x) => `
+    <div class="deck-rec">
+      <div class="deck-rec-head"><span class="deck-rec-type">${esc(x.type || 'idea')}</span>${x.projectName ? `<span class="deck-rec-proj">${esc(x.projectName)}</span>` : ''}<span class="deck-rec-impact i-${esc(x.impact || 'medium')}">${esc(x.impact || '')}</span></div>
+      <div class="deck-rec-title">${esc(x.title || '')}</div>
+      <button class="deck-rec-go" data-obj="${esc(x.objective || x.title || '')}">▶ Start this</button>
+    </div>`).join('');
+  out.querySelectorAll('.deck-rec-go[data-obj]').forEach((b) => {
+    b.onclick = () => {
+      const input = document.getElementById('message');
+      if (input) {
+        input.value = `Use the brain to work on this: ${b.dataset.obj}`;
+        input.focus();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    };
+  });
+}
+
+// Show/hide with the welcome screen. The welcome screen is visible when the
+// chat container carries .welcome-active; we observe that class so the deck
+// refreshes whenever the user returns to the empty state.
+function watchWelcome() {
+  const cc = document.getElementById('chat-container');
+  if (!cc) return;
+  const apply = () => {
+    if (cc.classList.contains('welcome-active')) {
+      if (inject()) loadPulse(false);
+    }
+  };
+  apply();
+  const mo = new MutationObserver(apply);
+  mo.observe(cc, { attributes: true, attributeFilter: ['class'] });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Defer slightly so app.js has set the initial welcome-active state.
+  setTimeout(() => { watchWelcome(); }, 120);
+});
+
+const homeDeck = { loadPulse, inject };
+export default homeDeck;
+window.homeDeck = homeDeck;

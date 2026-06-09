@@ -36557,3 +36557,165 @@ body.theme-frosted .modal {
 .cockpit-rec-impact.i-high { color: #3fd17a; } .cockpit-rec-impact.i-medium { color: #f0b429; } .cockpit-rec-impact.i-low { color: #9aa4b2; }
 .cockpit-rec-title { font-weight: 600; font-size: .88rem; margin-bottom: 3px; }
 .cockpit-rec-why { font-size: .76rem; opacity: .7; line-height: 1.4; margin-bottom: 8px; }
+
+/* ============================================================
+   HomeDeck — the ambient command center on the welcome screen.
+   Cobalt/gold to match the Brain Cockpit. The welcome screen is
+   pointer-events:none + absolutely centered, so the deck re-enables
+   pointer events on itself and stays compact + responsive.
+   ============================================================ */
+#home-deck.home-deck {
+  pointer-events: auto;
+  width: min(660px, 88vw);
+  margin: 18px auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: deck-rise 0.5s cubic-bezier(0.22,1,0.36,1) both;
+}
+@keyframes deck-rise { from { opacity:0; transform: translateY(10px);} to {opacity:1; transform:none;} }
+
+.deck-greeting {
+  font-size: 0.96rem;
+  letter-spacing: 0.2px;
+  text-align: center;
+  opacity: 0.95;
+}
+.deck-greeting #deck-hello { font-weight: 650; }
+.deck-greeting-sub { opacity: 0.5; }
+
+/* ---- pulse cards ---- */
+.deck-pulse {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.deck-card {
+  position: relative;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 13px 10px 11px;
+  text-align: center;
+  background: linear-gradient(160deg, rgba(88,132,255,0.10), rgba(88,132,255,0.03));
+  border: 1px solid rgba(88,132,255,0.18);
+  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+  overflow: hidden;
+}
+.deck-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(88,132,255,0.5);
+  box-shadow: 0 8px 26px -12px rgba(88,132,255,0.55);
+  background: linear-gradient(160deg, rgba(88,132,255,0.16), rgba(88,132,255,0.05));
+}
+.deck-card-brain { background: linear-gradient(160deg, rgba(88,132,255,0.18), rgba(120,90,255,0.06)); }
+.deck-card-map  { background: linear-gradient(160deg, rgba(240,180,41,0.10), rgba(88,132,255,0.04)); border-color: rgba(240,180,41,0.22); }
+.deck-card-map:hover { border-color: rgba(240,180,41,0.5); box-shadow: 0 8px 26px -12px rgba(240,180,41,0.5); }
+.deck-card-icon { font-size: 1.18rem; line-height: 1; margin-bottom: 6px; filter: drop-shadow(0 1px 4px rgba(0,0,0,0.25)); }
+.deck-card-val {
+  font-size: 1.45rem;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.5px;
+  display: flex; align-items: baseline; justify-content: center; gap: 4px;
+}
+.deck-card-val-sm { font-size: 0.92rem; font-weight: 650; letter-spacing: 0; }
+.deck-card-val-sub { font-size: 0.6rem; font-weight: 600; opacity: 0.55; margin-left: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.deck-card-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.7px; opacity: 0.55; margin-top: 4px; }
+.deck-on  { color: #3fd17a; animation: deck-pulse-dot 2.2s ease-in-out infinite; }
+.deck-off { color: #6b7280; }
+@keyframes deck-pulse-dot { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+.deck-card.is-on { border-color: rgba(63,209,122,0.35); }
+.deck-card.is-off { opacity: 0.78; }
+
+/* ---- activity ticker ---- */
+.deck-ticker-wrap {
+  position: relative;
+  display: flex; align-items: center; gap: 8px;
+  border-radius: 11px;
+  padding: 7px 10px;
+  background: rgba(255,255,255,0.025);
+  border: 1px solid rgba(255,255,255,0.06);
+  overflow: hidden;
+}
+.deck-ticker-tag {
+  flex: 0 0 auto;
+  font-size: 0.56rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+  color: #3fd17a; padding: 2px 6px; border-radius: 5px;
+  background: rgba(63,209,122,0.12); border: 1px solid rgba(63,209,122,0.25);
+}
+.deck-ticker { flex: 1 1 auto; overflow: hidden; white-space: nowrap; -webkit-mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(90deg, transparent, #000 24px, #000 calc(100% - 24px), transparent); }
+.deck-tick-run { display: inline-block; padding-left: 100%; animation: deck-marquee 34s linear infinite; }
+.deck-ticker-wrap:hover .deck-tick-run { animation-play-state: paused; }
+@keyframes deck-marquee { from { transform: translateX(0);} to { transform: translateX(-50%);} }
+.deck-tick-item { font-size: 0.74rem; opacity: 0.72; }
+.deck-tick-ic { color: var(--accent, #5884FF); margin-right: 5px; opacity: 0.9; }
+.deck-tick-sep { opacity: 0.25; margin: 0 12px; }
+
+/* ---- launch tiles ---- */
+.deck-launch { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.deck-tile {
+  pointer-events: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.78rem; font-weight: 550;
+  color: var(--text, #e8eaed);
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+.deck-tile:hover { background: rgba(88,132,255,0.14); border-color: rgba(88,132,255,0.4); transform: translateY(-1px); }
+.deck-tile-i { font-size: 0.9rem; opacity: 0.9; }
+
+/* ---- on-demand "what should I work on" ---- */
+.deck-next { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.deck-next-btn {
+  pointer-events: auto;
+  font-size: 0.82rem; font-weight: 600;
+  color: #fff;
+  padding: 9px 18px; border-radius: 999px; cursor: pointer;
+  background: linear-gradient(135deg, #5884FF, #7a5bff);
+  border: 1px solid rgba(255,255,255,0.16);
+  box-shadow: 0 6px 20px -8px rgba(88,132,255,0.7);
+  transition: transform 0.14s ease, box-shadow 0.14s ease, opacity 0.14s ease;
+}
+.deck-next-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 26px -8px rgba(88,132,255,0.8); }
+.deck-next-btn:disabled { opacity: 0.6; cursor: default; }
+.deck-next-out { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+.deck-next-loading, .deck-next-empty { font-size: 0.78rem; opacity: 0.6; text-align: center; }
+.deck-rec {
+  text-align: left;
+  border-radius: 12px; padding: 11px 13px;
+  background: rgba(88,132,255,0.06);
+  border: 1px solid rgba(88,132,255,0.16);
+}
+.deck-rec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.deck-rec-type { font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; color: var(--accent, #5884FF); }
+.deck-rec-proj { font-size: 0.66rem; opacity: 0.6; }
+.deck-rec-impact { margin-left: auto; font-size: 0.6rem; text-transform: uppercase; font-weight: 700; }
+.deck-rec-impact.i-high { color: #3fd17a; } .deck-rec-impact.i-medium { color: #f0b429; } .deck-rec-impact.i-low { color: #9aa4b2; }
+.deck-rec-title { font-size: 0.84rem; font-weight: 600; margin-bottom: 8px; }
+.deck-rec-go {
+  pointer-events: auto;
+  font-size: 0.74rem; font-weight: 600; color: var(--accent, #5884FF);
+  background: rgba(88,132,255,0.1); border: 1px solid rgba(88,132,255,0.3);
+  padding: 5px 12px; border-radius: 8px; cursor: pointer;
+  transition: background 0.14s ease;
+}
+.deck-rec-go:hover { background: rgba(88,132,255,0.2); }
+
+/* Responsive: collapse the deck on short / narrow viewports so it never
+   collides with the chat input bar. */
+@media (max-height: 720px) {
+  #home-deck.home-deck { gap: 10px; margin-top: 12px; }
+  .deck-ticker-wrap { display: none !important; }
+}
+@media (max-height: 600px) {
+  .deck-greeting, .deck-next { display: none; }
+  .deck-card { padding: 9px 8px; }
+}
+@media (max-width: 560px) {
+  .deck-pulse { grid-template-columns: repeat(2, 1fr); }
+  #home-deck.home-deck { width: 92vw; }
+}
