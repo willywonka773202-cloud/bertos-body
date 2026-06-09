@@ -405,6 +405,34 @@ async function runAudit() {
   box.querySelectorAll('.cockpit-build-btn[data-act]').forEach((b) => { b.onclick = () => prefillChat(`Let's level up Bert's AI — help me with: ${b.dataset.act}`); });
 }
 
+const LINT_ICON = { stale: '🕰', redundant: '⧉', conflict: '⚠' };
+async function runLint() {
+  const box = el('cockpit-lint'), btn = el('cockpit-lint-btn');
+  if (!box) return;
+  box.innerHTML = `<div class="cockpit-loading">Scanning your memory graph…</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '🧹 Scanning…'; }
+  const r = await jget('/api/brain/memory-lint');
+  if (btn) { btn.disabled = false; btn.textContent = '🧹 Re-check memory health'; }
+  if (!r || r.ok === false) { box.innerHTML = `<div class="cockpit-empty">Couldn't check memory${r && r.code === 'BRAIN_ERROR' ? ' (update the brain)' : ''}.</div>`; return; }
+  const s = r.structural || {};
+  const issues = r.issues || [];
+  const chip = (label, val, warn) => `<span class="cockpit-lint-stat${warn && val ? ' warn' : ''}">${val}<span class="cockpit-lint-statlabel">${label}</span></span>`;
+  box.innerHTML = `
+    <div class="cockpit-lint-stats">
+      ${chip('memories', s.memories ?? 0)}
+      ${chip('links', s.links ?? 0)}
+      ${chip('dead links', s.deadLinks ?? 0, true)}
+      ${chip('isolated', s.isolatedMemories ?? 0, true)}
+      ${chip('orphan tags', s.orphanTags ?? 0, true)}
+    </div>
+    ${issues.length ? `<div class="cockpit-audit-gaps-label">Flagged by Bert</div>` + issues.map((it) => `
+      <div class="cockpit-lint-issue">
+        <span class="cockpit-lint-itype">${LINT_ICON[it.type] || '•'} ${esc(it.type || '')}</span>
+        <span class="cockpit-lint-inote">${esc((it.note || '').slice(0, 110))}${it.fix ? ` <span class="cockpit-lint-ifix">→ ${esc(String(it.fix).slice(0, 70))}</span>` : ''}</span>
+      </div>`).join('') : `<div class="cockpit-lint-clean">✓ Memory looks healthy — no stale, redundant, or conflicting facts flagged.</div>`}
+    ${r.model ? `<div class="cockpit-audit-foot">linted by ${esc(String(r.model).slice(0, 22))}</div>` : ''}`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const tab = document.querySelector('.memory-tab[data-memory-tab="cockpit"]');
   if (tab) tab.addEventListener('click', () => setTimeout(() => { render(false); startLive(); }, 30));
@@ -414,6 +442,8 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sg) sg.onclick = suggest;
   const ab = el('cockpit-audit-btn');
   if (ab) ab.onclick = runAudit;
+  const lb = el('cockpit-lint-btn');
+  if (lb) lb.onclick = runLint;
   // Stop the live poll when the Brain modal closes.
   document.getElementById('close-memory-modal')?.addEventListener('click', stopLive);
 });

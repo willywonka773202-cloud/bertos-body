@@ -250,6 +250,70 @@ def setup_brain_routes() -> APIRouter:
                 "headline": str(parsed.get("headline") or "")[:200],
                 "gaps": gaps[:6], "model": model}
 
+    @router.get("/memory-lint")
+    async def brain_memory_lint():
+        """Memory health check — structural (dead links, isolated nodes, orphan
+        tags) computed deterministically + a free-model pass to flag stale /
+        redundant / conflicting facts. The research's /memory-lint."""
+        graph, recent = await asyncio.gather(
+            _brain_get("/api/memory/graph", 45.0),
+            _brain_get("/api/memory/recent?limit=60", 15.0),
+        )
+        g = ((graph.get("data") or {}).get("graph") or {}) if graph.get("ok") else {}
+        nodes = g.get("nodes") or []
+        links = g.get("links") or []
+        counts = g.get("counts") or {}
+        node_ids = {n.get("id") for n in nodes}
+        linked = set()
+        dead = 0
+        for l in links:
+            s, t = l.get("source"), l.get("target")
+            if s not in node_ids or t not in node_ids:
+                dead += 1
+            else:
+                linked.add(s); linked.add(t)
+        isolated = [n for n in nodes if n.get("type") == "memory" and n.get("id") not in linked]
+        orphan_tags = [n for n in nodes if n.get("type") == "tag" and (n.get("degree") or 0) <= 1]
+        structural = {
+            "memories": counts.get("memories", 0), "links": counts.get("links", len(links)),
+            "deadLinks": dead, "isolatedMemories": len(isolated), "orphanTags": len(orphan_tags),
+        }
+        # LLM pass over recent memory previews for stale / redundant / conflicting facts
+        notes = ((recent.get("data") or {}).get("notes") or []) if recent.get("ok") else []
+        issues = []
+        model = None
+        if notes:
+            previews = "\n".join(f"- {(n.get('preview') or '')[:120]}" for n in notes[:50] if n.get("preview"))
+            from src.endpoint_resolver import resolve_endpoint
+            from src.llm_core import llm_call_async
+            url = None
+            try:
+                url, model, headers = resolve_endpoint("utility", free_only=True)
+                if not url:
+                    url, model, headers = resolve_endpoint("default", free_only=True)
+            except Exception:
+                headers = {}
+            if url and model:
+                prompt = (
+                    "You lint a personal AI's memory (durable fact notes). From these recent notes, flag at most 6 "
+                    "issues: STALE (mentions a version/date/file that's likely outdated), REDUNDANT (near-duplicate of "
+                    "another), or CONFLICT (contradicts another). Return ONLY JSON: "
+                    '{"issues":[{"type":"stale|redundant|conflict","note":"the problem in <12 words","fix":"short suggestion"}]}. '
+                    "If the memory looks healthy, return an empty issues array.\n\nNOTES:\n" + previews
+                )
+                try:
+                    raw = await llm_call_async(url, model, [{"role": "user", "content": prompt}], headers=headers, max_tokens=900)
+                    import json as _json
+                    import re as _re
+                    mch = _re.search(r"\{.*\}", (raw or "").strip(), _re.DOTALL)
+                    if mch:
+                        p = _json.loads(mch.group(0))
+                        if isinstance(p, dict) and isinstance(p.get("issues"), list):
+                            issues = p["issues"][:6]
+                except Exception as e:
+                    logger.debug(f"memory-lint llm failed: {e}")
+        return {"ok": True, "structural": structural, "issues": issues, "model": model}
+
     @router.post("/notify-test")
     async def brain_notify_test():
         """Send a test push to the configured channel (ntfy → phone) so the user
