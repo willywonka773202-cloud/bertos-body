@@ -1,8 +1,8 @@
 # HANDOFF — BertOS (Odysseus fork)
 
 <!-- State header: keep these 5 lines accurate. Claude reads this first each session and picks up from Next. -->
-- **Version:** 1.0.0
-- **Status:** LIVE — deployed to the always-on desktop, verified end-to-end
+- **Version:** 1.1.0
+- **Status:** LIVE + BRAIN INTEGRATED — 19 brain tools in the deployed body, subscriptions on
 - **Updated:** 2026-06-08
 - **Next:** **🎉 SHIPPED. BertOS runs 24/7 on the Windows desktop (`desktop-u3m3uq1`) in Docker, reachable Tailscale-only at `https://desktop-u3m3uq1.tail3ae957.ts.net` — confirmed opening on the phone.** All four daily-driver items live: daily brief → phone (ntfy, 7am armed), Gmail IMAP, Google CalDAV, and the deploy. Migration carried `data/` + `.app_key` + vault over Taildrop; in-container verification on the desktop: `auth/status` configured+authenticated, `config/accounts` has_password:true, `POST /api/calendar/sync` → `{calendars:2, events:35, errors:[]}`. Laptop instance stopped (desktop is the sole host → no double briefs). **Small owner follow-ups:** (1) restart Ollama after setting `OLLAMA_HOST=0.0.0.0` so the container reaches it for chat/models; (2) confirm Docker Desktop "start on login" is ON so it survives reboot. **Still open (unrelated):** bertosV2 route-level free-first kill-switch uncommitted in that repo's tree.
 
@@ -18,6 +18,13 @@ This repo is a fork of **Odysseus** (PewDiePie's MIT self-hosted AI workspace, P
 ---
 
 ## Log (newest first)
+
+### 2026-06-09 — Claude Code — build+check (BRAIN INTEGRATION — live on the desktop)
+- **The bertosV2 "brain" is now wired into the deployed body — 19 brain tools live in BertOS, powered by the user's CLI subscriptions.** Expanded the MCP bridge from 6 → 19 tools (`scripts/brain-mcp-server.mjs` in bertosV2, committed `ca5b8e7`/`75463bc`): build/plan (brain_chat, brain_build, brain_deep_plan, brain_deep_refute), projects (brain_projects, brain_project_create), automate (brain_recommend_automations, brain_grounded_objective, brain_suggest_improvements), subscriptions/visibility (brain_providers, brain_provider_test, brain_usage, brain_foreman_runs) — on top of the existing council/deep_build/auto. Tool contracts mapped from the live routes via a 5-agent workflow (26 capabilities; streaming/internal/half-built ones correctly skipped).
+- **Safety model:** free/read-only tools always on; tools that spend a subscription (brain_build, brain_chat w/ a CLI providerId) gated behind BRAIN_ALLOW_PAID → PAID_DISABLED when off; Auto Mode stays hard-forced free; metered API keys stay off (no surprise billing). `brain_health` now reports `canBuild` honestly in the container case (daemon is loopback-only on the host → falls back to the Next-side /api/doctor "Local daemon" check).
+- **Packaging:** vendored the bridge into the body image (`brain-bridge/` + pinned deps @modelcontextprotocol/sdk 1.29.0 + zod 3.25.76; Dockerfile installs them build-safe) so the container spawns it WITHOUT mounting the brain repo. Overlay sets `BERTOS_BRAIN_DIR=/app/brain-bridge`, points at the native brain (`host.docker.internal:3000/4319`), and `BERTOS_BRAIN_ALLOW_PAID=1`. Committed `44614fa`/`fd16e21`.
+- **Verified LIVE end-to-end:** (laptop) MCP client smoke test — 19 tools callable, real data (17 projects, provider status, usage), paid gate fires; subscription path proven against the DESKTOP brain over Tailscale (`brain_provider_test[claude-code]` passed:true, `brain_chat[claude-code]` real reply). (desktop) rebuilt the body (code transferred via a laptop HTTP server over Tailscale after Taildrop flaked; sha256-verified); `docker compose exec odysseus curl host.docker.internal:3000/api/health` → ok; body logs: **"BertOS Brain (brain) - 19 tools via stdio", "allowPaid=true"**.
+- next: (optional) update the desktop's bertosV2 to current for any newer-route tools (`deploy/desktop/package-brain.sh`); a real subscription Deep Build demo on a practice repo when the user wants. SSH on the desktop is blocked by a corrupted Windows component store (not pursued).
 
 ### 2026-06-08 — Claude Code — build+check (Phase 3 deploy — SHIPPED to the desktop)
 - **BertOS is LIVE on the always-on Windows desktop**, guided step-by-step (owner ran the commands; SSH is off there so I couldn't drive it). Code travelled as a Taildrop tarball (`bertos-code.tgz`, since the `bertos` branch was never pushed) alongside `data/`+`.app_key` and the vault. `docker compose -f docker-compose.yml -f deploy/desktop/docker-compose.bertos.yml up -d --build` built clean; all 4 containers (odysseus/chromadb/searxng/ntfy) `Up`. Exposed Tailscale-only via `tailscale serve --bg 7777` → `https://desktop-u3m3uq1.tail3ae957.ts.net` (had to enable Serve on the tailnet once). **Owner confirmed the UI opens on their phone.**
