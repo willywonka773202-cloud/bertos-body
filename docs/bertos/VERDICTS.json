@@ -1,0 +1,86 @@
+{
+  "guardrail": {
+    "mapIsComplete": false,
+    "confidence": "high",
+    "assessment": "The map's resolve_endpoint() call-site inventory is accurate and complete (my independent grep matches it line-for-line), and its two named bypasses (webhook sync_chat, research_routes _owned_enabled_endpoint) are real. BUT the map's core premise \u2014 \"gate resolve_endpoint and you've covered the unattended surface\" \u2014 is FALSE, because the single largest unattended dispatcher in the repo (the scheduled-task executor in src/task_scheduler.py) selects endpoints WITHOUT ever calling resolve_endpoint. The map also mislabeled two genuine selection-bypass functions as benign \"runtime/N/A\", and its planned fix for the nightly skill audit does not gate that audit's teacher model. Threading free_only into resolve_endpoint as proposed would leave the biggest money-spending background path completely ungated. The map is incomplete and would ship with live leaks.",
+    "gapsFound": [
+      {
+        "location": "src/task_scheduler.py:1294-1300 (_execute_llm_task) + 1832-1846 (_resolve_defaults) + 1439-1453 (_execute_checkin) + 2186 (ensure_assistant_defaults)",
+        "problem": "BIGGEST MISSED LEAK. The primary scheduled-task executor (_execute_llm_task, the assistant/crew task path) selects its endpoint via, in order: task.endpoint_url (raw persisted column), crew.endpoint_url (raw persisted column), then self._resolve_defaults(db, owner). _resolve_defaults (:1832) runs a raw `db.query(DbSession).filter(endpoint_url.isnot(None)).order_by(created_at.desc()).first()` and returns recent.endpoint_url/model. NONE of these three call resolve_endpoint, so they bypass free_only AND the BERTOS_ALLOW_PAID kill-switch entirely. If the user's most recent chat session used a paid endpoint, every unattended scheduled task silently dispatches to it. The scheduler starts on app startup (app.py:1030) and dispatches on a loop, so this is live. The map only listed task_scheduler:1688 (the research path) and never mentioned _resolve_defaults, task.endpoint_url, or crew.endpoint_url. The map's entire 'gate resolve_endpoint' strategy does not touch this path. The kill-switch must be enforced where endpoint_url is consumed (the llm_call_async dispatch at :1398/:1655, or by routing all three sources through a paid-check) \u2014 gating resolve_endpoint alone leaves it fully open.",
+        "severity": "high"
+      },
+      {
+        "location": "src/ai_interaction.py:88-148 (_resolve_model)",
+        "problem": "MISLABELED as benign 'runtime/N/A' in the map (it lists ai_interaction.py:102 as 'runtime'). _resolve_model is a FULL endpoint-SELECTION function: it queries ModelEndpoint.is_enabled==True, iterates ALL enabled endpoints, probes their /models, and returns (build_chat_url(base), model, headers) with ZERO cost gating. It is reached unattended via (a) teacher_escalation._call_teacher (src/teacher_escalation.py:235-243), which fires inside the agent loop (agent_loop.py:2670 run_teacher_inline) \u2014 and the agent loop runs unattended scheduled tasks via task_scheduler._run_agent_loop; and (b) do_chat_with_model (the chat_with_model agent tool). It will happily pick a paid endpoint. Gating resolve_endpoint does nothing here.",
+        "severity": "high"
+      },
+      {
+        "location": "routes/skills_routes.py:1016-1027 (_resolve_audit_models teacher resolution)",
+        "problem": "The map's proposed fix (thread free_only into resolve_endpoint at skills_routes.py:1003) gates ONLY the audit worker model. _resolve_audit_models ALSO resolves a 'teacher' model at :1023 via `from src.ai_interaction import _resolve_model; t_url,t_model,t_headers = _resolve_model(spec, owner=owner)` \u2014 the ungated selector. The nightly skill audit (run_scheduled_skill_audit, UNATTENDED) uses this teacher on every audited skill. A teacher is by definition a stronger/more-capable model and very commonly a paid frontier model (set via teacher_model setting). So the map's fix leaves the most expensive half of the nightly audit ungated. The teacher resolution must also be cost-gated.",
+        "severity": "high"
+      },
+      {
+        "location": "routes/chat_helpers.py:201-260 (try_fallback_endpoint)",
+        "problem": "MISLABELED 'runtime/N/A' in the map (lists chat_helpers.py:236 as runtime). try_fallback_endpoint does its OWN `db.query(ModelEndpoint).filter(is_enabled==True).all()` (:220) and iterates to pick a replacement endpoint when the primary fails mid-stream \u2014 bypassing resolve_endpoint, free_only, and the kill-switch. With the global BERTOS_ALLOW_PAID kill-switch OFF, a primary-endpoint failure during ANY chat (including background agent turns) could silently fail over to a paid endpoint. Needs a _paid_blocked check at its selection point.",
+        "severity": "medium"
+      },
+      {
+        "location": "src/tool_execution.py:1357-1362 + src/tool_index.py:108-109,403 (chat_with_model / ask_teacher agent tools)",
+        "problem": "chat_with_model and ask_teacher are registered agent tools (agent_tools.py:34,39). They dispatch via dispatch_ai_tool -> do_chat_with_model / teacher_escalation -> _resolve_model() (the ungated selector). They are RAG-selectable into an UNATTENDED scheduled agent's toolset (task_scheduler.py:1376 get_tools_for_query) whenever the task prompt matches 'ask another model / escalate / stronger model' (tool_index.py:403 explicitly routes that intent to {chat_with_model, ask_teacher, list_models}). So a background scheduled task can invoke a paid model through these tools, fully outside any cost gate. The map did not flag agent-tool-mediated provider access at all.",
+        "severity": "medium"
+      },
+      {
+        "location": "routes/research_routes.py:411, 440, 602 (_owned_enabled_endpoint, three call sites)",
+        "problem": "The map identified the _owned_enabled_endpoint bypass but cited only ONE site (:439). It is actually used at THREE selection sites (:411 with body.endpoint_id, :440 as fallback, :602 in another route) \u2014 each does `db.query(ModelEndpoint).filter(is_enabled==True)...first()` then builds the chat URL via _resolve_endpoint_runtime, bypassing resolve_endpoint. All three need the _paid_blocked check, not just one. Deep research can also be kicked off in ways that run for a long time, amplifying cost.",
+        "severity": "medium"
+      },
+      {
+        "location": "src/ai_interaction.py:1617-1647 (image-model fallback selection)",
+        "problem": "Image-generation tool path: when _resolve_model fails, it falls back to `db.query(ModelEndpoint).filter(is_enabled==True, model_type=='image').all()` and picks the first working one, bypassing resolve_endpoint. Image endpoints can be metered/paid (external image APIs). Reachable via the image agent tool, including from agents. The map's resolve_endpoint-only strategy and its is_paid host list (focused on chat/text providers) do not address image-tier endpoints.",
+        "severity": "low"
+      },
+      {
+        "location": "src/task_endpoint.py:13 consumers \u2014 routes/session_routes.py:188/200 AND src/session_actions.py:155",
+        "problem": "The map lists session_routes._pick_endpoint_for_sort (:188/:194) as the only background caller of resolve_task_endpoint and correctly flags it. But src/session_actions.py:155 (the auto session-sort sweep, reached via the background 'clean + sort sessions' built-in) is a SECOND unattended caller of resolve_task_endpoint(owner=...) that the map's threaded-free_only list omits. If free_only is threaded only through session_routes, this caller still resolves paid. Also note session_routes:200 is a second resolve_endpoint('default') fallback in the same function that the map's table shows but the change-plan summary only explicitly lists :188 \u2014 both lines need gating.",
+        "severity": "low"
+      }
+    ]
+  },
+  "memory": {
+    "mapIsComplete": true,
+    "assessment": "I tried hard to break this map and could not find a missed caller, a missed bypass consumer, or a missed dict-field dependency. The map's core verdict is CORRECT and well-evidenced: \"only reimplement the 5 methods\" is a trap. I independently confirmed every load-bearing claim against source.\n\nVERIFIED ACCURATE:\n- All 4 live instantiation sites (app_initializer.py:47, builtin_actions.py:83, mcp_servers/memory_server.py:36, services/memory/service.py:43). The shim claim is real: services/memory/memory.py:8 re-exports from src.memory; there is ONE class to reimplement.\n- The 11 public methods, their signatures, and return shapes match src/memory.py exactly (read in full, 387 lines).\n- The full caller surface is exactly the 12 files the map lists \u2014 an exhaustive sweep across ALL top-level dirs (companion/config/core/integrations/mcp_servers/routes/scripts/services/src) found NO additional caller.\n- The direct-field-mutation-through-save() contract is real and is the true API: routes/memory_routes.py:490 sets [\"pinned\"], :513-516 sets [\"text\"]/[\"category\"]/[\"timestamp\"]; ai_interaction.py:1024-1025 sets [\"text\"]/[\"timestamp\"]; memory_provider.py:160-162 (remember) sets [\"session_id\"]/[\"metadata\"]; memory_extractor.py:443/447 sets [\"pinned\"]/[\"session_id\"]. All round-trip through save().\n- pinned split confirmed at chat_processor.py:207-208; increment_uses at :241.\n- Chroma rebuild seam confirmed: app_initializer.py:65 load() -> memory_vector.rebuild(existing); rebuild (memory_vector.py:188-227) keys on mem.get(\"id\")+mem.get(\"text\"). id stability risk is real.\n- The .memory_file ATTRIBUTE dependency is real and non-obvious: memory_extractor.py:29 does os.path.dirname(memory_manager.memory_file). A method-only reimpl throws AttributeError.\n- All 4 bypass consumers confirmed: scripts/claim_ownerless.py:40, core/database.py:1160-1175, routes/admin_wipe_routes.py:42-47, scripts/migrate_faiss_to_chroma.py:69.\n- VAULT SCHEMA MISMATCH IS REAL: BertOS-Vault exists (721 .md). Sampled frontmatter has id/ts/projectId/kind/role/tags and NO owner/uses/pinned/category/session_id \u2014 exactly as claimed. No Obsidian integration exists in repo (grep OBSIDIAN/BERTOS_/BertOS-Vault minus vaultwarden = empty). MEMORY_FILE at constants.py:17, VAULT_FILE(vaultwarden) at :33.\n\nThe gaps below are ADDITIONS the map under-emphasized, not refutations. The single most dangerous under-statement: memory_provider._to_record (memory_provider.py:118-122) preserves EVERY unknown key as metadata, so the on-disk contract is even stricter than the map says \u2014 ANY extra key on an entry must survive save(), not just the named ones. Backup import (backup_routes.py:87-98) appends arbitrary external dicts, so unknown keys are routinely present.",
+    "confidence": "high",
+    "gapsFound": [
+      {
+        "location": "src/memory_provider.py:118-122",
+        "problem": "The map says callers depend on a fixed set of fields. UNDERSTATED: _to_record builds metadata from EVERY key not in _CORE_FIELDS, then surfaces it on MemoryRecord.metadata. Combined with backup_routes.py:87-98 appending arbitrary external dicts and increment_uses persisting whatever exists, the real save() contract is 'preserve ALL keys, known or not' \u2014 a vault writer that only emits known frontmatter silently drops every custom/imported key, not just owner/uses/pinned/session_id. This is the strongest contract in the codebase and the map only names specific fields.",
+        "severity": "high"
+      },
+      {
+        "location": "tests/test_memory_imports.py:12 and :53",
+        "problem": "Test contract the map omitted: asserts hasattr(package_manager, 'claim_ownerless') AND actually calls manager.claim_ownerless('alice'). The map labels claim_ownerless as having 'no live caller, safe to stub/raise' \u2014 but the import test exercises it for real, so a stub-that-raises breaks the suite. Also tests/test_claim_ownerless_json.py imports scripts.claim_ownerless.claim_json_entries (the bypass reimpl).",
+        "severity": "medium"
+      },
+      {
+        "location": "services/__init__.py:14 and services/memory/__init__.py:5",
+        "problem": "Package re-export surface the map missed: services/__init__.py re-exports MemoryService/Memory/MemorySearchResult and services/memory/__init__.py re-exports MemoryManager. Any external importer using 'from services.memory import MemoryManager' must keep resolving. Minor (they chain to src.memory) but it is an import contract not listed.",
+        "severity": "low"
+      },
+      {
+        "location": "core/constants.py (whole file)",
+        "problem": "Map remediation ERROR, not a surface gap: the map says to 'Mirror the constant in core/constants.py if that is a separate live module \u2014 confirm; both exist'. core/constants.py is a pure 'from src.constants import *' shim (verified). Adding MEMORY_VAULT_DIR to src/constants.py propagates automatically; mirroring it manually would create the exact drift the shim was written to kill. Following the map's instruction here is actively wrong.",
+        "severity": "low"
+      },
+      {
+        "location": "routes/memory_routes.py:138,186 and services/memory/service.py:58",
+        "problem": "session_id is a first-class QUERY/FILTER field, not just a stored blob. memory_routes filters memories by m.get('session_id')==session_id (list-by-session endpoints), and service.py:58 reads entry.get('session_id') to populate the Memory model returned by get_all/delete. The map flags session_id as 'lost on round-trip' generically but does not note it is used as a retrieval key \u2014 losing it silently breaks the session-scoped memory listing endpoints, not just 'linkage'.",
+        "severity": "medium"
+      },
+      {
+        "location": "src/memory.py:253 (find_duplicates) and 267/286/324/327/343/378 (get_relevant_memories)",
+        "problem": "Hidden KeyError coupling the map flags only for find_duplicates: BOTH methods index entry['text']/memory['text'] with bracket syntax (not .get). A vault reimpl whose load() ever yields an entry without a 'text' key (e.g. an empty .md body, or a frontmatter-only note) raises KeyError and takes down dedup AND retrieval AND categorize_memory_by_relevance (:267). The vault sample I read had a body, but malformed/empty notes in a 721-file human-edited vault are plausible. load()/load_all() must guarantee every returned entry has a string 'text'.",
+        "severity": "medium"
+      }
+    ]
+  }
+}
