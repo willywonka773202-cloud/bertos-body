@@ -21,11 +21,13 @@ let loadingPulse = false;
 function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]));
 }
-async function jget(path, timeoutMs) {
+async function jget(path, timeoutMs, method) {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs || 12000);
   try {
-    const r = await fetch(API + path, { cache: 'no-store', signal: ctl.signal });
+    const opts = { cache: 'no-store', signal: ctl.signal };
+    if (method && method !== 'GET') { opts.method = method; opts.headers = { 'Content-Type': 'application/json' }; opts.body = '{}'; }
+    const r = await fetch(API + path, opts);
     return await r.json();
   } catch (e) {
     return { ok: false, code: 'NET', error: String(e) };
@@ -204,7 +206,16 @@ async function loadPlan() {
         <span class="deck-plan-ftext"><span class="deck-plan-faction">${esc(f.action || '')}</span>${f.why ? `<span class="deck-plan-fwhy">${esc(String(f.why).slice(0, 90))}</span>` : ''}</span>
       </button>`).join('') : `<div class="deck-digest-empty">Looks like a calm day — nothing pressing.</div>`}
     ${r.note ? `<div class="deck-plan-note">${esc(String(r.note).slice(0, 140))}</div>` : ''}
+    <div class="deck-plan-actions"><button class="deck-plan-push" id="deck-plan-push">📲 Send to my phone</button></div>
     <div class="deck-digest-foot">${r.mode === 'ai' && r.model ? `planned by ${esc(String(r.model).slice(0, 22))}` : 'your day at a glance'}</div>`;
+  const push = document.getElementById('deck-plan-push');
+  if (push) push.onclick = async () => {
+    push.disabled = true; push.textContent = '📲 Sending…';
+    const pr = await jget('/api/brain/daily-plan/push', 30000, 'POST');
+    push.disabled = false;
+    push.textContent = pr && pr.ok ? '✓ Sent to your phone' : '📲 Send to my phone';
+    if (!pr || pr.ok === false) push.textContent = '✗ Couldn’t send';
+  };
   out.querySelectorAll('.deck-plan-focus[data-act]').forEach((b) => {
     b.onclick = () => {
       const input = document.getElementById('message');

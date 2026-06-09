@@ -547,6 +547,49 @@ def setup_brain_routes() -> APIRouter:
             logger.debug(f"daily-plan llm failed: {e}")
         return {**base, "greeting": "Here's your day, Will.", "focus": det_focus, "model": model, "mode": "deterministic"}
 
+    @router.post("/daily-plan/push")
+    async def brain_daily_plan_push(owner: str = Depends(require_user)):
+        """Send today's plan to the user's phone (ntfy / configured channel).
+        User-initiated self-notification — the click is the approval, same
+        channel as the 7am brief. Composes a concise text deterministically so
+        it's fast and works without a chat model. Never messages anyone else."""
+        from src.builtin_actions import gather_day_context
+        ctx = await gather_day_context(owner or "")
+        events = ctx.get("events") or []
+        subjects = ctx.get("subjects") or []
+        todos = ctx.get("todos") or []
+        brain = ctx.get("brain") or {}
+        unread = ctx.get("unread_count") or 0
+        lines = [f"☀️ Your day — {ctx.get('date_label', 'today')}", ""]
+        if events:
+            lines.append("📅 Calendar:")
+            for e in events[:6]:
+                loc = f" @ {e['location']}" if e.get("location") else ""
+                lines.append(f"  {e['time']}  {e['summary']}{loc}")
+        else:
+            lines.append("📅 No events today.")
+        lines.append("")
+        lines.append(f"✉ {unread:,} unread"
+                     + (f" — newest from {subjects[0]['from']}" if subjects else ""))
+        if brain.get("builds") or brain.get("new_mems"):
+            lines.append(f"🔨 {brain.get('builds', 0)} built overnight · 🧠 {brain.get('new_mems', 0)} new memories")
+        if todos:
+            lines.append("")
+            lines.append("✓ Todos: " + "; ".join(todos[:4]))
+        body = "\n".join(lines)
+        try:
+            from routes.note_routes import dispatch_reminder
+            res = await dispatch_reminder(
+                title="Bert · Your day",
+                note_body=body,
+                note_id="daily-plan-manual",
+                owner=owner or "",
+                free_only=True,
+            )
+            return {"ok": True, "dispatched": res, "preview": body[:280]}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
     @router.post("/notify-test")
     async def brain_notify_test():
         """Send a test push to the configured channel (ntfy → phone) so the user

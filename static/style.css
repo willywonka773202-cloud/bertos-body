@@ -37043,6 +37043,13 @@ body.theme-frosted .modal {
 .deck-plan-faction { font-size: 0.86rem; font-weight: 550; line-height: 1.35; color: #e8eaed; }
 .deck-plan-fwhy { font-size: 0.72rem; opacity: 0.62; line-height: 1.3; }
 .deck-plan-note { font-size: 0.78rem; opacity: 0.7; font-style: italic; text-align: center; padding: 2px; }
+.deck-plan-actions { display: flex; justify-content: center; margin-top: 2px; }
+.deck-plan-push {
+  font-size: 0.78rem; padding: 7px 14px; border-radius: 999px; cursor: pointer; color: #cdd7ff;
+  background: rgba(88,132,255,0.1); border: 1px solid rgba(88,132,255,0.28); transition: background 0.12s ease;
+}
+.deck-plan-push:hover:not(:disabled) { background: rgba(88,132,255,0.18); }
+.deck-plan-push:disabled { opacity: 0.7; cursor: default; }
 
 .deck-helpers { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .deck-subs-out { width: 100%; display: flex; flex-direction: column; gap: 4px; text-align: left; }
