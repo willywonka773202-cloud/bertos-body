@@ -59,24 +59,27 @@ Leave the laptop server **off** after this — the desktop is now the primary.
 
 ## Part B — On the DESKTOP (PowerShell)
 
-### 1. Get the code
+The `bertos` branch is local-only (never pushed), so the **code travels as a
+Taildrop tarball** (`bertos-code.tgz`) alongside the data + vault — no git needed.
+
+### 1. Receive the three Taildrop files
 
 ```powershell
-# pick a stable location, e.g. C:\BertOS
-git clone https://github.com/<your-odysseus-remote> C:\BertOS\odysseus   # or: git pull
-cd C:\BertOS\odysseus
-git checkout bertos
+cd $env:USERPROFILE\Downloads
+tailscale file get .          # pulls bertos-code.tgz, bertos-data.tgz, bertos-vault.tgz here
+dir bertos-*.tgz              # confirm all three (use the plain names if you see numbered dupes)
 ```
+(If `tailscale` isn't on PATH: `& "C:\Program Files\Tailscale\tailscale.exe" file get .`)
 
-### 2. Receive the migrated files
-
-Tailscale saves Taildrop files to your Downloads folder (or accept the prompt).
-Then pull them into the repo:
+### 2. Extract the code, then the data + vault into it
 
 ```powershell
-# Adjust the source path if Tailscale put them elsewhere.
-tar -xzf "$env:USERPROFILE\Downloads\bertos-data.tgz" -C .          # -> .\data\
-tar -xzf "$env:USERPROFILE\Downloads\bertos-vault.tgz" -C .         # -> .\BertOS-Vault\
+mkdir C:\BertOS -Force
+cd C:\BertOS
+tar -xzf "$env:USERPROFILE\Downloads\bertos-code.tgz"               # -> C:\BertOS\odysseus\
+cd C:\BertOS\odysseus
+tar -xzf "$env:USERPROFILE\Downloads\bertos-data.tgz"   -C .        # -> .\data\
+tar -xzf "$env:USERPROFILE\Downloads\bertos-vault.tgz"  -C .        # -> .\BertOS-Vault\
 ```
 
 After this you should have `.\data\.app_key`, `.\data\app.db`,
