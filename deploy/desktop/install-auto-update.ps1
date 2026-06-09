@@ -30,14 +30,11 @@ git branch --set-upstream-to=deploy/bertos bertos 2>$null
 Write-Host "    git wired. HEAD = $((git rev-parse --short HEAD).Trim())"
 
 Write-Host "==> Registering the 10-minute auto-update task..."
-$ps = (Get-Command powershell.exe).Source
-$action  = New-ScheduledTaskAction -Execute $ps -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$repo\deploy\desktop\auto-update.ps1`""
-$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date) `
-            -RepetitionInterval (New-TimeSpan -Minutes 10) `
-            -RepetitionDuration ([TimeSpan]::MaxValue)
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -DontStopOnIdleEnd -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName "BertOS-AutoUpdate" -Action $action -Trigger $trigger `
-  -Settings $settings -RunLevel Highest -Force | Out-Null
+# schtasks (rather than New-ScheduledTaskTrigger) — its "every N minutes,
+# indefinitely" is reliable and avoids the RepetitionDuration overflow bug
+# ([TimeSpan]::MaxValue serializes to an invalid P99999999D… duration).
+$tr = "powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$repo\deploy\desktop\auto-update.ps1`""
+schtasks /create /tn BertOS-AutoUpdate /tr $tr /sc minute /mo 10 /rl highest /f | Out-Null
 
 Write-Host ""
 Write-Host "DONE. Auto-deploy is live. From now on, code changes appear on your desktop"
