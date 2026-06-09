@@ -111,6 +111,11 @@ function shell() {
     </button>
   </div>
 
+  <div class="deck-digest" id="deck-digest">
+    <button class="deck-digest-btn" id="deck-digest-btn">📥 Summarize my inbox</button>
+    <div class="deck-digest-out" id="deck-digest-out"></div>
+  </div>
+
   <div class="deck-ticker-wrap" id="deck-ticker-wrap" style="display:none">
     <span class="deck-ticker-tag">live</span>
     <div class="deck-ticker" id="deck-ticker"></div>
@@ -155,6 +160,33 @@ function wire(root) {
   // On-demand recommendation.
   const nb = root.querySelector('#deck-next-btn');
   if (nb) nb.onclick = suggestNext;
+  // On-demand inbox digest.
+  const db = root.querySelector('#deck-digest-btn');
+  if (db) db.onclick = loadDigest;
+}
+
+async function loadDigest() {
+  const out = document.getElementById('deck-digest-out');
+  const btn = document.getElementById('deck-digest-btn');
+  if (!out) return;
+  out.innerHTML = `<div class="deck-digest-loading">Bert's reading your inbox… (free model, ~10s)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '📥 Reading…'; }
+  const r = await jget('/api/email/digest', 60000);
+  if (btn) { btn.disabled = false; btn.textContent = '📥 Re-summarize inbox'; }
+  if (!r || r.ok === false) { out.innerHTML = `<div class="deck-digest-empty">Couldn't read the inbox right now.</div>`; return; }
+  if (!r.count) { out.innerHTML = `<div class="deck-digest-empty">📭 Inbox zero — nothing unread.</div>`; return; }
+  const needs = (r.needs_reply || []).slice(0, 6);
+  const fyi = (r.fyi || []).slice(0, 5);
+  out.innerHTML = `
+    <div class="deck-digest-summary">${esc(r.summary || '')}</div>
+    ${needs.length ? `<div class="deck-digest-label">Needs a reply</div>` + needs.map((n) => `
+      <div class="deck-digest-item needs">
+        <div class="deck-digest-from">${esc((n.from || '').slice(0, 38))}</div>
+        <div class="deck-digest-subj">${esc((n.subject || '').slice(0, 72))}</div>
+        ${n.why ? `<div class="deck-digest-why">${esc(String(n.why).slice(0, 80))}</div>` : ''}
+      </div>`).join('') : ''}
+    ${fyi.length ? `<div class="deck-digest-label">FYI</div><ul class="deck-digest-fyi">` + fyi.map((f) => `<li>${esc(String(f).slice(0, 90))}</li>`).join('') + `</ul>` : ''}
+    <div class="deck-digest-foot">${r.count} unread${r.skip ? ` · ${r.skip} skippable` : ''}${r.model ? ` · ${esc(String(r.model).slice(0, 22))}` : ''}</div>`;
 }
 
 function inject() {

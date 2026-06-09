@@ -1036,6 +1036,79 @@ def setup_email_routes():
         _unread_cache[key] = (now, count)
         return {"ok": True, "count": count, "cached": False}
 
+    # AI inbox digest — triage recent unread into needs-reply / FYI / skip,
+    # using a FREE model (never spends). Fails soft at every step.
+    _digest_cache: dict = {}
+
+    @router.get("/digest")
+    async def email_digest(limit: int = Query(25), refresh: int = Query(0), owner: str = Depends(require_owner)):
+        key = owner or ""
+        now = _time.time()
+        if not refresh:
+            hit = _digest_cache.get(key)
+            if hit and now - hit[0] < 300:
+                return {**hit[1], "cached": True}
+        try:
+            res = await _asyncio.to_thread(
+                _list_emails_sync, "INBOX", max(5, min(50, limit)), 0, "unread", None, None, False, owner
+            )
+            emails = (res or {}).get("emails") or []
+        except Exception as e:
+            return {"ok": False, "error": "inbox_unavailable", "detail": str(e)[:150]}
+        if not emails:
+            out = {"ok": True, "count": 0, "summary": "Inbox zero on unread — nothing waiting.", "needs_reply": [], "fyi": [], "skip": 0}
+            _digest_cache[key] = (now, out)
+            return out
+        lines = []
+        for i, m in enumerate(emails[:limit]):
+            frm = (m.get("from_name") or m.get("from_address") or "?")[:40]
+            subj = (m.get("subject") or "(no subject)")[:100]
+            lines.append(f"{i + 1}. [{frm}] {subj}")
+        listing = "\n".join(lines)
+        from src.endpoint_resolver import resolve_endpoint
+        url = model = None
+        try:
+            url, model, headers = resolve_endpoint("utility", owner=owner, free_only=True)
+            if not url:
+                url, model, headers = resolve_endpoint("default", owner=owner, free_only=True)
+        except Exception:
+            headers = {}
+        if not url or not model:
+            out = {"ok": True, "count": len(emails), "summary": f"{len(emails)} unread (configure a free model in Settings for an AI summary).", "needs_reply": [], "fyi": [], "skip": 0, "raw": lines[:12]}
+            return out
+        prompt = (
+            "You triage an inbox. Given unread emails (sender + subject), return ONLY a JSON object:\n"
+            '{"summary": "1-2 sentence overview", '
+            '"needs_reply": [{"from":"...","subject":"...","why":"short reason"}], '
+            '"fyi": ["short notable non-urgent item", ...], '
+            '"skip": <integer count of promos/newsletters/junk>}\n'
+            "Be selective about needs_reply (only genuine human replies). No prose outside the JSON.\n\nUNREAD:\n" + listing
+        )
+        try:
+            raw = await llm_call_async(url, model, [{"role": "user", "content": prompt}], headers=headers, max_tokens=900)
+        except Exception as e:
+            logger.debug(f"digest llm failed: {e}")
+            return {"ok": True, "count": len(emails), "summary": f"{len(emails)} unread.", "needs_reply": [], "fyi": [], "skip": 0, "error": "ai_unavailable"}
+        import json as _json2
+        import re as _re2
+        parsed = None
+        try:
+            mch = _re2.search(r"\{.*\}", (raw or "").strip(), _re2.DOTALL)
+            if mch:
+                parsed = _json2.loads(mch.group(0))
+        except Exception:
+            parsed = None
+        if not isinstance(parsed, dict):
+            out = {"ok": True, "count": len(emails), "summary": (raw or "").strip()[:400], "needs_reply": [], "fyi": [], "skip": 0, "model": model}
+        else:
+            out = {"ok": True, "count": len(emails), "model": model,
+                   "summary": str(parsed.get("summary") or "")[:400],
+                   "needs_reply": parsed.get("needs_reply") or [],
+                   "fyi": parsed.get("fyi") or [],
+                   "skip": parsed.get("skip") if isinstance(parsed.get("skip"), int) else 0}
+        _digest_cache[key] = (now, out)
+        return out
+
     @router.post("/{uid}/unflag-spam")
     async def unflag_spam(uid: str, owner: str = Depends(require_owner)):
         """User override — mark email as not spam."""
