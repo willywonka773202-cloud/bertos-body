@@ -36495,6 +36495,19 @@ body.theme-frosted .modal {
 .mtree-detail-body { font-size: .82rem; line-height: 1.45; max-height: 160px; overflow: auto; white-space: pre-wrap; opacity: .92; }
 .mtree-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
 .mtree-chip { font-size: .7rem; background: rgba(91,140,255,.14); color: #9ec0ff; border-radius: 999px; padding: 2px 9px; }
+/* Connected-node walker: click a relative to glide the graph to it. */
+.mtree-nbr-label { font-size: .64rem; text-transform: uppercase; letter-spacing: .7px; opacity: .5; margin: 11px 0 6px; }
+.mtree-nbrs { display: flex; flex-wrap: wrap; gap: 5px; max-height: 124px; overflow: auto; }
+.mtree-nbr {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: .72rem; color: rgba(220,228,240,.85);
+  background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09);
+  border-radius: 999px; padding: 3px 9px 3px 7px; cursor: pointer;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: background .14s ease, border-color .14s ease;
+}
+.mtree-nbr:hover { background: rgba(91,140,255,.16); border-color: rgba(91,140,255,.4); }
+.mtree-nbr .mtree-dot { width: 8px; height: 8px; flex: 0 0 auto; }
 .mtree-hint { font-size: .72rem; opacity: .5; text-align: center; padding-bottom: 2px; }
 .mtree-search { flex: 1; min-width: 110px; max-width: 260px; background: var(--panel,#161b22); border: 1px solid var(--border,#2a3140); color: var(--fg,#c9d1d9); border-radius: 8px; padding: 5px 11px; font-size: .8rem; outline: none; transition: border-color .15s; }
 .mtree-search:focus { border-color: var(--accent-primary,#5b8cff); }

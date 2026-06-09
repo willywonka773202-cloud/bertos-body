@@ -295,6 +295,30 @@ function wireCanvas() {
 }
 
 // ── DOM: detail card + legend ────────────────────────────────────────────────
+// Unique neighbors of a node (the other endpoint of every incident link),
+// sorted by degree so the most-connected relatives surface first.
+function neighborsOf(n) {
+  const seen = new Map();
+  for (const l of state.links) {
+    let o = null;
+    if (l.s === n) o = l.t; else if (l.t === n) o = l.s;
+    if (o && !seen.has(o.id)) seen.set(o.id, o);
+  }
+  return [...seen.values()].sort((a, b) => (b.degree || 0) - (a.degree || 0));
+}
+// Pin a node and glide the viewport so it sits centered — lets you walk the
+// graph by clicking through the "Connected" list without losing your place.
+function focusNode(n) {
+  if (!n) return;
+  state.pinned = n;
+  if (!visible(n)) { state.filters[n.type] = true; const b = document.querySelector(`.mtree-legend-item[data-mtype="${n.type}"]`); if (b) b.classList.remove('off'); }
+  const W = state.canvas.clientWidth, H = state.canvas.clientHeight;
+  const scale = Math.max(state.view.scale, 0.8);
+  state.view.scale = scale;
+  state.view.x = W / 2 - n.x * scale;
+  state.view.y = H / 2 - n.y * scale;
+  renderDetail(); requestDraw();
+}
 function renderDetail() {
   const box = el('mtree-detail');
   if (!box) return;
@@ -303,6 +327,11 @@ function renderDetail() {
   const st = TYPE_STYLE[n.type] || TYPE_STYLE.default;
   const when = n.ts ? new Date(n.ts).toLocaleString() : '';
   const tags = (n.tags || []).map((t) => `<span class="mtree-chip">${esc(t)}</span>`).join('');
+  const nbrs = neighborsOf(n);
+  const nbrChips = nbrs.slice(0, 16).map((o) => {
+    const os = TYPE_STYLE[o.type] || TYPE_STYLE.default;
+    return `<button class="mtree-nbr" data-nid="${esc(o.id)}" title="${esc(o.label || '')}"><span class="mtree-dot" style="background:${os.fill}"></span>${esc((o.label || '').slice(0, 30))}</button>`;
+  }).join('');
   box.classList.remove('hidden');
   box.innerHTML = `
     <div class="mtree-detail-head"><span class="mtree-dot" style="background:${st.fill}"></span>
@@ -310,8 +339,12 @@ function renderDetail() {
       <button id="mtree-detail-x" title="Close">✕</button></div>
     <div class="mtree-detail-meta">${esc(n.type)}${n.kind ? ' · ' + esc(n.kind) : ''}${n.source ? ' · ' + esc(n.source) : ''}${when ? ' · ' + esc(when) : ''} · ${n.degree} links</div>
     ${n.preview ? `<div class="mtree-detail-body">${esc(n.preview).slice(0, 600)}</div>` : ''}
-    ${tags ? `<div class="mtree-chips">${tags}</div>` : ''}`;
-  const x = el('mtree-detail-x'); if (x) x.onclick = () => { state.pinned = null; renderDetail(); };
+    ${tags ? `<div class="mtree-chips">${tags}</div>` : ''}
+    ${nbrChips ? `<div class="mtree-nbr-label">Connected${nbrs.length > 16 ? ' · ' + nbrs.length : ''}</div><div class="mtree-nbrs">${nbrChips}</div>` : ''}`;
+  const x = el('mtree-detail-x'); if (x) x.onclick = () => { state.pinned = null; renderDetail(); requestDraw(); };
+  box.querySelectorAll('.mtree-nbr[data-nid]').forEach((b) => {
+    b.onclick = () => { const o = state.byId.get(b.dataset.nid); if (o) focusNode(o); };
+  });
 }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m])); }
 
