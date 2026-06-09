@@ -112,10 +112,12 @@ function buildModel(graph) {
   // springs they just orbit the repulsion/gravity shell as noise. Keep all hubs.
   const linked = new Set();
   for (const l of links) { linked.add(l.s.id); linked.add(l.t.id); }
-  state.raw = { counts };
   state.nodes = [...byId.values()].filter((n) => linked.has(n.id) || n.type !== 'memory');
   state.links = links;
   state.byId = byId;
+  // Track total-vs-rendered so the header can honestly say when the graph is
+  // showing only the densest slice (top-by-degree cap for clarity + speed).
+  state.raw = { counts, total: nodes.length, rendered: state.nodes.length };
 }
 
 function radius(n) { return Math.max(3, Math.min(22, 3 + Math.sqrt(n.degree) * 2.4)); }
@@ -384,7 +386,10 @@ function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (m) => ({
 function renderHeader() {
   const c = state.raw?.counts || {};
   const h = el('mtree-counts');
-  if (h) h.innerHTML = `<b>${c.memories ?? 0}</b> memories · <b>${c.projects ?? 0}</b> projects · <b>${c.tags ?? 0}</b> tags · <b>${c.links ?? 0}</b> links`;
+  if (!h) return;
+  const total = state.raw?.total || 0, rendered = state.raw?.rendered || 0;
+  const trunc = total > rendered ? ` · <span class="mtree-trunc" title="The graph renders the most-connected nodes for clarity + speed; search or scope to a project to reach the rest.">showing densest ${rendered}</span>` : '';
+  h.innerHTML = `<b>${c.memories ?? 0}</b> memories · <b>${c.projects ?? 0}</b> projects · <b>${c.tags ?? 0}</b> tags · <b>${c.links ?? 0}</b> links${trunc}`;
 }
 function wireLegend() {
   document.querySelectorAll('.mtree-legend-item[data-mtype]').forEach((b) => {

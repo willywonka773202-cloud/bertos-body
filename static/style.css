@@ -36810,3 +36810,6 @@ body.theme-frosted .modal {
 .cockpit-auto-chain { font-size: 0.66rem; opacity: 0.6; display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .cockpit-auto-arr { opacity: 0.4; margin: 0 1px; }
 .cockpit-auto-meta { flex: 0 0 auto; font-size: 0.68rem; opacity: 0.55; text-transform: capitalize; white-space: nowrap; text-align: right; }
+
+/* Honest indicator: the Tree caps at the densest MAX_NODES for clarity/speed. */
+.mtree-trunc { opacity: .55; font-style: italic; font-size: .92em; cursor: help; }
