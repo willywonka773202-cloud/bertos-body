@@ -784,6 +784,107 @@ server.registerTool(
   }
 );
 
+// ════════════════════════════════════════════════════════════════════════════
+// Memory tree (v0.3) — link BertOS's shared memory into the chat/brain. All
+// free / read-only (the vault). This is the "very big resource": 700+ durable
+// notes (decisions, facts, build artifacts) + projects + tags, ~3k links.
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── brain_memory_search — semantic recall of task-relevant knowledge ─────────────
+server.registerTool(
+  "brain_memory_search",
+  {
+    title: "BertOS brain — recall relevant memory",
+    description:
+      "Semantic recall: given a task/question, return the most relevant durable knowledge from BertOS's shared " +
+      "memory (decisions, facts, prior build results) as a grounded brief + the top matching notes. FREE, read-only. " +
+      "Use to ground answers in what BertOS and its agents already learned. Requires the brain host.",
+    inputSchema: {
+      query: z.string().min(1).describe("The task/question to recall relevant memory for."),
+      projectId: z.string().optional().describe("Optional project id to scope the recall."),
+    },
+  },
+  async ({ query, projectId }) => {
+    const qs = new URLSearchParams({ q: query, debug: "1" });
+    if (projectId) qs.set("projectId", projectId);
+    const r = await callBrain("GET", `/api/memory/relevant?${qs.toString()}`, undefined, 30_000);
+    if (r.down) return brainDownResult(r.detail);
+    if (r.error) return jsonResult({ ok: false, ...r.error }, true);
+    const d = r.data || {};
+    return jsonResult({
+      ok: true,
+      query: d.query,
+      count: d.count,
+      brief: d.brief,
+      top: Array.isArray(d.scores) ? d.scores.slice(0, 8).map((s) => ({ kind: s.kind, projectId: s.projectId, score: s.score, preview: s.preview })) : undefined,
+    });
+  }
+);
+
+// ── brain_memory_recent — most recent durable notes ──────────────────────────────
+server.registerTool(
+  "brain_memory_recent",
+  {
+    title: "BertOS brain — recent memory notes",
+    description:
+      "List the most recent DURABLE memory notes (decisions, facts, build artifacts) BertOS recorded across projects. " +
+      "FREE, read-only. Requires the brain host.",
+    inputSchema: {
+      limit: z.number().int().min(1).max(100).optional().describe("How many notes (default 30)."),
+      kind: z.string().optional().describe("Comma-separated kinds to include, e.g. 'decision,fact,artifact'."),
+      projectId: z.string().optional().describe("Optional project id to scope to."),
+    },
+  },
+  async ({ limit, kind, projectId }) => {
+    const qs = new URLSearchParams();
+    if (limit) qs.set("limit", String(limit));
+    if (kind) qs.set("kind", kind);
+    if (projectId) qs.set("projectId", projectId);
+    const r = await callBrain("GET", `/api/memory/recent${qs.toString() ? "?" + qs.toString() : ""}`, undefined, 15_000);
+    if (r.down) return brainDownResult(r.detail);
+    if (r.error) return jsonResult({ ok: false, ...r.error }, true);
+    const d = r.data || {};
+    return jsonResult({
+      ok: true,
+      total: d.total,
+      count: d.count,
+      notes: (d.notes || []).map((n) => ({ id: n.id, kind: n.kind, projectId: n.projectId, tags: n.tags, source: n.source, ts: n.ts, preview: n.preview })),
+    });
+  }
+);
+
+// ── brain_memory_graph — the knowledge-graph overview (counts + hubs) ─────────────
+server.registerTool(
+  "brain_memory_graph",
+  {
+    title: "BertOS brain — memory graph overview",
+    description:
+      "Overview of BertOS's memory knowledge graph: how many memories / projects / tags / links, and the most-connected " +
+      "'hub' nodes. FREE, read-only. (The BertOS UI renders the full interactive Memory Tree from this same graph.) Requires the brain host.",
+    inputSchema: {
+      scope: z.enum(["all", "project"]).optional().describe("'all' (default) or 'project' (needs projectId)."),
+      projectId: z.string().optional().describe("Project id when scope='project'."),
+    },
+  },
+  async ({ scope, projectId }) => {
+    const qs = new URLSearchParams();
+    if (scope) qs.set("scope", scope);
+    if (projectId) qs.set("projectId", projectId);
+    const r = await callBrain("GET", `/api/memory/graph${qs.toString() ? "?" + qs.toString() : ""}`, undefined, 30_000);
+    if (r.down) return brainDownResult(r.detail);
+    if (r.error) return jsonResult({ ok: false, ...r.error }, true);
+    const d = r.data || {};
+    const g = d.graph || {};
+    const nodes = Array.isArray(g.nodes) ? g.nodes : [];
+    const hubs = nodes
+      .filter((n) => typeof n.degree === "number")
+      .sort((a, b) => b.degree - a.degree)
+      .slice(0, 12)
+      .map((n) => ({ type: n.type, kind: n.kind, label: n.label, degree: n.degree }));
+    return jsonResult({ ok: true, scope: d.scope, counts: g.counts, generatedAt: g.generatedAt, hubs });
+  }
+);
+
 const transport = new StdioServerTransport();
 await server.connect(transport);
 // Keep stderr clean of stdout pollution; MCP uses stdout for the JSON-RPC stream.
