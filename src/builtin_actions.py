@@ -1005,6 +1005,130 @@ async def action_learn_sender_signatures(owner: str, **kwargs) -> Tuple[str, boo
         return str(e), False
 
 
+async def gather_day_context(owner: str = "") -> dict:
+    """Gather today's structured context — calendar events, unread email count +
+    top subjects, active todos, and what the brain shipped in the last day — as a
+    plain dict. Powers the on-demand Daily Plan (and could back the 7am brief).
+    Every section is best-effort and fails soft to empty; never raises."""
+    from datetime import datetime as _dt, timedelta as _td
+    import json as _json
+    out = {
+        "date_label": "", "events": [], "unread_count": 0, "subjects": [],
+        "todos": [], "brain": {"builds": 0, "commits": 0, "new_mems": 0},
+    }
+    try:
+        today = _dt.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        out["date_label"] = today.strftime(f"%A, %B {today.day}, %Y")
+        tomorrow = today + _td(days=1)
+        try:
+            from core.auth import AuthManager
+            _allow_null = not AuthManager().is_configured
+        except Exception:
+            _allow_null = False
+        # ----- Calendar (refresh CalDAV best-effort, then read today) -----
+        try:
+            import asyncio as _asyncio
+            from src.caldav_sync import sync_caldav, _load_caldav_accounts
+            if _load_caldav_accounts(owner or ""):
+                await _asyncio.wait_for(sync_caldav(owner or ""), timeout=30)
+        except Exception as _se:
+            logger.debug(f"day_context: caldav pre-sync skipped: {_se}")
+        try:
+            from core.database import SessionLocal, CalendarEvent, CalendarCal, Note
+            db = SessionLocal()
+            try:
+                ev_q = db.query(CalendarEvent).join(CalendarCal).filter(
+                    CalendarEvent.dtstart < tomorrow,
+                    CalendarEvent.dtend > today,
+                    CalendarEvent.status != "cancelled",
+                )
+                if owner:
+                    ev_q = owner_filter(ev_q, CalendarCal, owner, include_shared=_allow_null)
+                for e in ev_q.order_by(CalendarEvent.dtstart).all():
+                    out["events"].append({
+                        "time": "all day" if e.all_day else e.dtstart.strftime("%H:%M"),
+                        "summary": e.summary or "(untitled)",
+                        "location": e.location or "",
+                    })
+                n_q = db.query(Note).filter(Note.archived == False)  # noqa: E712
+                if owner:
+                    n_q = owner_filter(n_q, Note, owner, include_shared=_allow_null)
+                for n in n_q.all():
+                    if n.note_type == "checklist" and n.items:
+                        try:
+                            for it in _json.loads(n.items):
+                                if not it.get("done") and it.get("text"):
+                                    out["todos"].append(f"{n.title or 'Checklist'}: {it['text']}")
+                        except Exception:
+                            continue
+                    elif n.pinned and n.title:
+                        out["todos"].append(n.title)
+            finally:
+                db.close()
+        except Exception as _ce:
+            logger.debug(f"day_context: calendar/notes skipped: {_ce}")
+        out["todos"] = out["todos"][:10]
+        # ----- Email: unread count + top 5 subjects (best-effort IMAP) -----
+        try:
+            import email as _email
+            from routes.email_helpers import _imap_connect, _decode_header
+            conn = _imap_connect(None, owner=owner)
+            try:
+                conn.select("INBOX", readonly=True)
+                status, data = conn.search(None, "UNSEEN")
+                uids = (data[0].split() if status == "OK" and data and data[0] else [])
+                out["unread_count"] = len(uids)
+                for uid in uids[-5:][::-1]:
+                    try:
+                        _, msg_data = conn.fetch(uid, "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT)])")
+                        if not msg_data or not msg_data[0]:
+                            continue
+                        hdr = msg_data[0][1] if isinstance(msg_data[0], tuple) else msg_data[0]
+                        parsed = _email.message_from_bytes(hdr)
+                        subject = _decode_header(parsed.get("Subject") or "") or "(no subject)"
+                        from_raw = _decode_header(parsed.get("From") or "") or "?"
+                        name = from_raw.split("<", 1)[0].strip().strip('"') if "<" in from_raw else from_raw
+                        out["subjects"].append({"from": name or from_raw, "subject": subject})
+                    except Exception:
+                        continue
+            finally:
+                try: conn.logout()
+                except Exception: pass
+        except Exception as _ee:
+            logger.debug(f"day_context: email skipped: {_ee}")
+        # ----- Brain: builds + memories in the last day (best-effort) -----
+        try:
+            import os as _os
+            import httpx as _httpx
+            _brain = _os.environ.get("BERTOS_BRAIN_BASE_URL", "http://127.0.0.1:3000").rstrip("/")
+            _since = _dt.now() - _td(days=1)
+
+            def _recent_ts(ts):
+                try:
+                    return _dt.fromisoformat(str(ts).replace("Z", "+00:00")).astimezone().replace(tzinfo=None) >= _since
+                except Exception:
+                    return False
+            async with _httpx.AsyncClient(timeout=8.0) as _c:
+                try:
+                    _runs = ((await _c.get(f"{_brain}/api/deep/jobs?limit=40")).json().get("data")) or []
+                    for _r in _runs:
+                        if _r.get("status") == "done" and _recent_ts(_r.get("finishedAt") or _r.get("startedAt")):
+                            out["brain"]["builds"] += 1
+                            out["brain"]["commits"] += int(_r.get("committed") or 0)
+                except Exception:
+                    pass
+                try:
+                    _notes = (((await _c.get(f"{_brain}/api/memory/recent?limit=100")).json().get("data")) or {}).get("notes") or []
+                    out["brain"]["new_mems"] = sum(1 for _n in _notes if _recent_ts(_n.get("ts")))
+                except Exception:
+                    pass
+        except Exception as _be:
+            logger.debug(f"day_context: brain skipped: {_be}")
+    except Exception as e:
+        logger.debug(f"gather_day_context failed: {e}")
+    return out
+
+
 async def action_daily_brief(owner: str, **kwargs) -> Tuple[str, bool]:
     """Build a short morning digest: today's calendar events, unread email count
     + top-N senders/subjects, active todos."""

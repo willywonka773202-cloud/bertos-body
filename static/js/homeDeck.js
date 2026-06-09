@@ -111,6 +111,11 @@ function shell() {
     </button>
   </div>
 
+  <div class="deck-plan">
+    <button class="deck-plan-btn" id="deck-plan-btn">☀️ Plan my day</button>
+    <div class="deck-plan-out" id="deck-plan-out"></div>
+  </div>
+
   <div class="deck-helpers">
     <button class="deck-digest-btn" id="deck-digest-btn">📥 Summarize my inbox</button>
     <button class="deck-digest-btn" id="deck-subs-btn">💳 Track subscriptions</button>
@@ -167,6 +172,49 @@ function wire(root) {
   if (db) db.onclick = loadDigest;
   const sb = root.querySelector('#deck-subs-btn');
   if (sb) sb.onclick = loadSubs;
+  const pb = root.querySelector('#deck-plan-btn');
+  if (pb) pb.onclick = loadPlan;
+}
+
+const PLAN_KIND = { reply: '✉', calendar: '📅', build: '🔨', todo: '✓', personal: '★' };
+async function loadPlan() {
+  const out = document.getElementById('deck-plan-out');
+  const btn = document.getElementById('deck-plan-btn');
+  if (!out) return;
+  out.innerHTML = `<div class="deck-digest-loading">Bert's pulling together your day… (calendar · inbox · overnight builds)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '☀️ Planning…'; }
+  const r = await jget('/api/brain/daily-plan', 75000);
+  if (btn) { btn.disabled = false; btn.textContent = '☀️ Re-plan my day'; }
+  if (!r || r.ok === false) { out.innerHTML = `<div class="deck-digest-empty">Couldn't build your plan right now.</div>`; return; }
+  const c = r.counts || {};
+  const focus = r.focus || [];
+  const chips = [
+    c.events ? `📅 ${c.events} event${c.events === 1 ? '' : 's'}` : null,
+    c.unread ? `✉ ${c.unread.toLocaleString()} unread` : null,
+    c.todos ? `✓ ${c.todos} todo${c.todos === 1 ? '' : 's'}` : null,
+    c.builds ? `🔨 ${c.builds} built overnight` : null,
+    c.newMemories ? `🧠 ${c.newMemories} new` : null,
+  ].filter(Boolean);
+  out.innerHTML = `
+    <div class="deck-plan-greeting">${esc(r.greeting || "Here's your day, Will.")}</div>
+    ${chips.length ? `<div class="deck-plan-chips">${chips.map((ch) => `<span class="deck-plan-chip">${esc(ch)}</span>`).join('')}</div>` : ''}
+    ${focus.length ? `<div class="deck-plan-focus-label">Focus today</div>` + focus.map((f) => `
+      <button class="deck-plan-focus" data-act="${esc(f.action || '')}">
+        <span class="deck-plan-fkind k-${esc(f.kind || 'todo')}">${PLAN_KIND[f.kind] || '•'}</span>
+        <span class="deck-plan-ftext"><span class="deck-plan-faction">${esc(f.action || '')}</span>${f.why ? `<span class="deck-plan-fwhy">${esc(String(f.why).slice(0, 90))}</span>` : ''}</span>
+      </button>`).join('') : `<div class="deck-digest-empty">Looks like a calm day — nothing pressing.</div>`}
+    ${r.note ? `<div class="deck-plan-note">${esc(String(r.note).slice(0, 140))}</div>` : ''}
+    <div class="deck-digest-foot">${r.mode === 'ai' && r.model ? `planned by ${esc(String(r.model).slice(0, 22))}` : 'your day at a glance'}</div>`;
+  out.querySelectorAll('.deck-plan-focus[data-act]').forEach((b) => {
+    b.onclick = () => {
+      const input = document.getElementById('message');
+      if (input && b.dataset.act) {
+        input.value = `Help me with this: ${b.dataset.act}`;
+        input.focus();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    };
+  });
 }
 
 async function loadSubs() {

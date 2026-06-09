@@ -14,7 +14,13 @@ import logging
 import os
 
 import httpx
-from fastapi import APIRouter, Body
+from fastapi import APIRouter, Body, Depends
+
+try:
+    from routes.email_helpers import require_user
+except Exception:  # pragma: no cover - fallback if auth module shifts
+    def require_user(*_a, **_k):  # type: ignore
+        return ""
 
 logger = logging.getLogger(__name__)
 
@@ -455,6 +461,91 @@ def setup_brain_routes() -> APIRouter:
         except Exception as e:
             logger.debug(f"memory-hot llm failed: {e}")
         return {"ok": True, "hot": deterministic, "items": det_lines, "model": model, "mode": "deterministic"}
+
+    @router.get("/daily-plan")
+    async def brain_daily_plan(owner: str = Depends(require_user)):
+        """Daily Plan — the Jarvis morning briefing. Weaves today's calendar,
+        inbox, active todos, and what the brain shipped overnight into a short
+        plan + 3 concrete focus actions. Read-only; free model; deterministic
+        fallback so it always returns a usable plan even with no chat model."""
+        from src.builtin_actions import gather_day_context
+        ctx = await gather_day_context(owner or "")
+        events = ctx.get("events") or []
+        subjects = ctx.get("subjects") or []
+        todos = ctx.get("todos") or []
+        brain = ctx.get("brain") or {}
+        unread = ctx.get("unread_count") or 0
+        ev_str = "; ".join(
+            f"{e['time']} {e['summary']}" + (f" @ {e['location']}" if e.get("location") else "")
+            for e in events
+        ) or "nothing scheduled"
+        subj_str = "; ".join(f"{s['from']}: {s['subject']}" for s in subjects) or "none"
+        todo_str = "; ".join(todos) or "none"
+        brain_str = (
+            f"{brain.get('builds', 0)} build(s) / {brain.get('commits', 0)} commit(s), "
+            f"{brain.get('new_mems', 0)} new memories in 24h"
+        )
+        context = (
+            f"DATE: {ctx.get('date_label', '')}\n"
+            f"CALENDAR ({len(events)}): {ev_str}\n"
+            f"INBOX: {unread} unread. Most recent: {subj_str}\n"
+            f"ACTIVE TODOS: {todo_str}\n"
+            f"OVERNIGHT (Will's AI worked while he slept): {brain_str}"
+        )
+        # Deterministic focus list (used as the fallback, and as a floor).
+        det_focus = []
+        if subjects:
+            det_focus.append({"action": f"Triage your inbox — {unread:,} unread, newest from {subjects[0]['from']}", "kind": "reply"})
+        elif unread:
+            det_focus.append({"action": f"Clear {unread:,} unread emails", "kind": "reply"})
+        if events:
+            det_focus.append({"action": f"Prep for \"{events[0]['summary']}\" at {events[0]['time']}", "kind": "calendar"})
+        if todos:
+            det_focus.append({"action": todos[0], "kind": "todo"})
+        det_focus = det_focus[:3]
+        base = {
+            "ok": True, "date": ctx.get("date_label", ""),
+            "counts": {"events": len(events), "unread": unread, "todos": len(todos),
+                       "builds": brain.get("builds", 0), "newMemories": brain.get("new_mems", 0)},
+            "events": events[:6], "subjects": subjects[:5],
+        }
+        from src.endpoint_resolver import resolve_endpoint
+        from src.llm_core import llm_call_async
+        url = model = None
+        try:
+            url, model, headers = resolve_endpoint("utility", free_only=True)
+            if not url:
+                url, model, headers = resolve_endpoint("default", free_only=True)
+        except Exception:
+            headers = {}
+        if not url or not model:
+            return {**base, "greeting": "Here's your day, Will.", "focus": det_focus, "model": None, "mode": "deterministic"}
+        prompt = (
+            "You are Bert, Will's personal AI. Write his MORNING PLAN from the context below. "
+            "Be warm but tight — Will is busy. Pick the 3 highest-leverage focus actions for TODAY, grounded in "
+            "the real calendar/inbox/todos (don't invent). Each focus action gets a kind: "
+            "reply (email), calendar (an event), build (ship code via his AI), todo, or personal. "
+            "Return ONLY JSON: {\"greeting\":\"one warm line naming what matters most today\", "
+            "\"focus\":[{\"action\":\"concrete thing to do <14 words\",\"kind\":\"reply|calendar|build|todo|personal\","
+            "\"why\":\"short\"}], \"note\":\"optional one-line nudge or 'looks like a calm day'\"}\n\n"
+            f"CONTEXT:\n{context}"
+        )
+        try:
+            raw = await llm_call_async(url, model, [{"role": "user", "content": prompt}], headers=headers, max_tokens=700)
+            import json as _json
+            import re as _re
+            mch = _re.search(r"\{.*\}", (raw or "").strip(), _re.DOTALL)
+            if mch:
+                p = _json.loads(mch.group(0))
+                if isinstance(p, dict):
+                    focus = p.get("focus") if isinstance(p.get("focus"), list) else []
+                    focus = [f for f in focus if isinstance(f, dict) and f.get("action")][:3]
+                    return {**base, "greeting": str(p.get("greeting") or "Here's your day, Will.")[:160],
+                            "focus": focus or det_focus, "note": str(p.get("note") or "")[:140],
+                            "model": model, "mode": "ai"}
+        except Exception as e:
+            logger.debug(f"daily-plan llm failed: {e}")
+        return {**base, "greeting": "Here's your day, Will.", "focus": det_focus, "model": model, "mode": "deterministic"}
 
     @router.post("/notify-test")
     async def brain_notify_test():
