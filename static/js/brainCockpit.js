@@ -1,0 +1,127 @@
+// brainCockpit.js — a Brain "Cockpit" dashboard tab: at-a-glance view of the
+// powerhouse — which AI subscriptions/engines are online, the build/automate
+// targets (projects), and the brain's recent memory activity. Read-only via the
+// body's /api/brain proxy; degrades gracefully when the brain is offline.
+// Self-contained: wires its own tab trigger so memory.js stays untouched.
+
+const API = window.location.origin;
+let loaded = false, loading = false;
+
+async function jget(path) {
+  try { const r = await fetch(API + path, { cache: 'no-store' }); return await r.json(); }
+  catch (e) { return { ok: false, code: 'NET', error: String(e) }; }
+}
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m])); }
+function el(id) { return document.getElementById(id); }
+
+const ENGINE_LABEL = {
+  'claude-code': 'Claude', 'codex-cli': 'Codex', 'gemini-cli': 'Gemini', 'ollama': 'Ollama',
+};
+const SUBS = ['claude-code', 'codex-cli', 'gemini-cli'];
+
+function renderStatus(s) {
+  const box = el('cockpit-status'); if (!box) return;
+  if (!s || s.ok === false || s.up === false) {
+    box.innerHTML = `<div class="cockpit-offline">🧠 Brain offline — start it on your host (<code>npm run bertos:host</code>) to power Council / Deep Build / build.</div>`;
+    return;
+  }
+  const engines = s.engines || [];
+  const find = (id) => engines.find((e) => e.id === id);
+  const subChips = SUBS.map((id) => {
+    const e = find(id); const on = e && e.online;
+    return `<span class="cockpit-chip ${on ? 'on' : 'off'}"><span class="cockpit-dot"></span>${esc(ENGINE_LABEL[id] || id)}</span>`;
+  }).join('');
+  const ollamaOn = (find('ollama') || {}).online;
+  const freeCount = engines.filter((e) => e.online && !e.paid && !e.disabled).length;
+  box.innerHTML = `
+    <div class="cockpit-status-head">
+      <span class="cockpit-pulse"></span>
+      <strong>Brain online</strong>
+      <span class="cockpit-sub">${engines.filter((e) => e.online).length} engines live</span>
+    </div>
+    <div class="cockpit-chips">
+      <span class="cockpit-grouplabel">Subscriptions</span>${subChips}
+      <span class="cockpit-chip ${ollamaOn ? 'on' : 'off'} local"><span class="cockpit-dot"></span>Ollama</span>
+      <span class="cockpit-chip free">+${freeCount} free</span>
+    </div>`;
+}
+
+const STATUS_COLOR = { active: '#3fb1a6', paused: '#f0b429', idea: '#5b8cff', archived: '#9aa4b2' };
+function renderProjects(p) {
+  const box = el('cockpit-projects'); if (!box) return;
+  if (!p || p.ok === false) { box.innerHTML = `<div class="cockpit-empty">Projects unavailable.</div>`; return; }
+  const projects = (p.data || []).slice();
+  if (!projects.length) { box.innerHTML = `<div class="cockpit-empty">No projects yet. Ask the chat to register one (brain_project_create).</div>`; return; }
+  projects.sort((a, b) => (a.status === 'active' ? -1 : 0) - (b.status === 'active' ? -1 : 0));
+  box.innerHTML = projects.slice(0, 24).map((pr) => {
+    const c = STATUS_COLOR[pr.status] || '#9aa4b2';
+    const buildable = !!pr.localPath;
+    return `<div class="cockpit-proj">
+      <div class="cockpit-proj-top"><span class="cockpit-proj-dot" style="background:${c}"></span>
+        <span class="cockpit-proj-name">${esc(pr.name)}</span>
+        <span class="cockpit-proj-status" style="color:${c}">${esc(pr.status || '')}</span></div>
+      ${pr.localPath ? `<div class="cockpit-proj-path" title="${esc(pr.localPath)}">${esc(pr.localPath)}</div>` : `<div class="cockpit-proj-path dim">no local path</div>`}
+      ${buildable ? `<button class="cockpit-build-btn" data-proj="${esc(pr.name)}" title="Ask the chat to build in this project">⚒ Build…</button>` : ''}
+    </div>`;
+  }).join('');
+  // "Build…" → prefill the chat with a build request for that project (the chat's
+  // brain_build/brain_deep_build tools do the work). No direct spend from here.
+  box.querySelectorAll('.cockpit-build-btn').forEach((b) => {
+    b.onclick = () => prefillChat(`Use the brain to build in the "${b.dataset.proj}" project: `);
+  });
+}
+
+const KIND_ICON = { decision: '◆', fact: '•', artifact: '▣', plan: '◇', note: '·' };
+function renderRecent(r) {
+  const box = el('cockpit-recent'); if (!box) return;
+  if (!r || r.ok === false) { box.innerHTML = `<div class="cockpit-empty">Recent activity unavailable${r && r.code === 'BRAIN_ERROR' ? ' (update the brain to enable)' : ''}.</div>`; return; }
+  const notes = (r.data || {}).notes || [];
+  if (!notes.length) { box.innerHTML = `<div class="cockpit-empty">No recent notes.</div>`; return; }
+  box.innerHTML = notes.map((n) => {
+    const when = n.ts ? timeAgo(new Date(n.ts)) : '';
+    return `<div class="cockpit-note">
+      <span class="cockpit-note-kind" title="${esc(n.kind || '')}">${KIND_ICON[n.kind] || '·'}</span>
+      <span class="cockpit-note-text">${esc((n.preview || '').slice(0, 130))}</span>
+      <span class="cockpit-note-meta">${esc(n.source || '')}${when ? ' · ' + when : ''}</span>
+    </div>`;
+  }).join('');
+}
+function timeAgo(d) {
+  const s = (Date.now() - d.getTime()) / 1000;
+  if (s < 60) return 'just now'; if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  if (s < 86400) return Math.floor(s / 3600) + 'h ago'; return Math.floor(s / 86400) + 'd ago';
+}
+
+function prefillChat(text) {
+  // Close the Brain modal and drop the text into the chat input.
+  document.getElementById('close-memory-modal')?.click();
+  const input = document.getElementById('message');
+  if (input) { input.value = text; input.focus(); input.dispatchEvent(new Event('input', { bubbles: true })); }
+}
+
+async function render(force) {
+  const panel = document.querySelector('.memory-tab-panel[data-memory-panel="cockpit"]');
+  if (!panel) return;
+  if (loaded && !force) return;
+  if (loading) return;
+  loading = true;
+  const body = el('cockpit-body');
+  if (body && !loaded) body.classList.remove('cockpit-hidden');
+  el('cockpit-status') && (el('cockpit-status').innerHTML = '<div class="cockpit-loading">Connecting to your brain…</div>');
+  const [status, projects, recent] = await Promise.all([
+    jget('/api/brain/status'), jget('/api/brain/projects'), jget('/api/brain/memory/recent?limit=12'),
+  ]);
+  loaded = true; loading = false;
+  renderStatus(status); renderProjects(projects); renderRecent(recent);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const tab = document.querySelector('.memory-tab[data-memory-tab="cockpit"]');
+  if (tab) tab.addEventListener('click', () => setTimeout(() => render(false), 30));
+  const rf = el('cockpit-refresh');
+  if (rf) rf.onclick = () => render(true);
+});
+
+const brainCockpit = { render };
+export default brainCockpit;
+window.brainCockpit = brainCockpit;
