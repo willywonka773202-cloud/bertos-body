@@ -114,8 +114,22 @@ function shell() {
   </div>
 
   <div class="deck-plan">
-    <button class="deck-plan-btn" id="deck-plan-btn">☀️ Plan my day</button>
+    <div class="deck-plan-btnrow">
+      <button class="deck-plan-btn" id="deck-plan-btn">☀️ Plan my day</button>
+      <button class="deck-plan-btn deck-wrap-btn" id="deck-wrap-btn">🌙 Wrap my day</button>
+    </div>
     <div class="deck-plan-out" id="deck-plan-out"></div>
+    <div class="deck-plan-out" id="deck-wrap-out"></div>
+  </div>
+
+  <div class="deck-mem-search-wrap">
+    <div class="deck-mem-search-row">
+      <span class="deck-mem-search-ic">⌕</span>
+      <input id="deck-mem-search" class="deck-mem-search" type="text"
+             placeholder="Search Bert's memory…" autocomplete="off" spellcheck="false" />
+      <button class="deck-mem-clear" id="deck-mem-clear" title="Clear search" style="display:none">×</button>
+    </div>
+    <div class="deck-mem-results" id="deck-mem-results"></div>
   </div>
 
   <div class="deck-helpers">
@@ -176,6 +190,78 @@ function wire(root) {
   if (sb) sb.onclick = loadSubs;
   const pb = root.querySelector('#deck-plan-btn');
   if (pb) pb.onclick = loadPlan;
+  const wb = root.querySelector('#deck-wrap-btn');
+  if (wb) wb.onclick = loadWrap;
+  // Memory search: debounced live lookup, Enter for instant, × to clear.
+  const ms = root.querySelector('#deck-mem-search');
+  const mc = root.querySelector('#deck-mem-clear');
+  const mr = root.querySelector('#deck-mem-results');
+  if (ms) {
+    const kick = (immediate) => {
+      clearTimeout(memSearchTimer);
+      const q = ms.value.trim();
+      if (mc) mc.style.display = ms.value ? '' : 'none';
+      if (q.length < 2) {
+        memSearchSeq++; // invalidate any in-flight search
+        if (mr) mr.innerHTML = '';
+        return;
+      }
+      if (immediate) runMemSearch(q);
+      else memSearchTimer = setTimeout(() => runMemSearch(q), 300);
+    };
+    ms.addEventListener('input', () => kick(false));
+    ms.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); kick(true); } });
+  }
+  if (mc) mc.onclick = () => {
+    clearTimeout(memSearchTimer);
+    memSearchSeq++;
+    if (ms) { ms.value = ''; ms.focus(); }
+    if (mr) mr.innerHTML = '';
+    mc.style.display = 'none';
+  };
+}
+
+// ── Memory search: live lookup over Bert's durable memory (read-only,
+// deterministic — the body filters recent note previews server-side). ──
+let memSearchTimer = 0;
+let memSearchSeq = 0;
+function timeAgo(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const days = Math.floor(h / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+async function runMemSearch(q) {
+  const out = document.getElementById('deck-mem-results');
+  if (!out) return;
+  const seq = ++memSearchSeq;
+  out.innerHTML = `<div class="deck-mem-loading">Searching Bert's memory…</div>`;
+  const r = await jget(`/api/brain/memory-search?q=${encodeURIComponent(q)}`, 18000);
+  if (seq !== memSearchSeq) return; // superseded by a newer keystroke
+  if (!r || r.ok === false) { out.innerHTML = `<div class="deck-digest-empty">Couldn't search right now.</div>`; return; }
+  const hits = r.hits || [];
+  if (!hits.length) {
+    out.innerHTML = `<div class="deck-digest-empty">No matches for “${esc(q)}”${r.note ? ' — ' + esc(String(r.note).slice(0, 90)) : ''}</div>`;
+    return;
+  }
+  out.innerHTML = hits.map((h) => {
+    const ic = Object.prototype.hasOwnProperty.call(KIND_ICON, h.kind) ? KIND_ICON[h.kind] : '·';
+    const ago = timeAgo(h.ts);
+    return `
+    <div class="deck-mem-hit">
+      <span class="deck-mem-hit-ic">${ic}</span>
+      <span class="deck-mem-hit-text">${esc(String(h.preview || '').slice(0, 160))}</span>
+      ${ago ? `<span class="deck-mem-hit-ago">${esc(ago)}</span>` : ''}
+    </div>`;
+  }).join('') + `<div class="deck-digest-foot">${r.total > hits.length ? `top ${hits.length} of ${r.total} matches` : `${hits.length} match${hits.length === 1 ? '' : 'es'}`} · recent memory</div>`;
 }
 
 const PLAN_KIND = { reply: '✉', calendar: '📅', build: '🔨', todo: '✓', personal: '★' };
@@ -226,6 +312,40 @@ async function loadPlan() {
       }
     };
   });
+}
+
+// ── Evening Wrap: the bookend to the morning plan — what shipped today,
+// where the inbox stands, and what's on deck for tomorrow (deterministic). ──
+async function loadWrap() {
+  const out = document.getElementById('deck-wrap-out');
+  const btn = document.getElementById('deck-wrap-btn');
+  if (!out) return;
+  out.innerHTML = `<div class="deck-digest-loading">Bert's wrapping up your day… (builds · memories · tomorrow)</div>`;
+  if (btn) { btn.disabled = true; btn.textContent = '🌙 Wrapping…'; }
+  const r = await jget('/api/brain/day-wrap', 30000);
+  if (btn) { btn.disabled = false; btn.textContent = '🌙 Re-wrap my day'; }
+  if (!r || r.ok === false) { out.innerHTML = `<div class="deck-digest-empty">Couldn't wrap your day right now.</div>`; return; }
+  const s = r.shipped || {};
+  const chips = [
+    s.builds ? `🔨 ${s.builds} build${s.builds === 1 ? '' : 's'} shipped` : null,
+    s.newMemories ? `🧠 ${s.newMemories} new memor${s.newMemories === 1 ? 'y' : 'ies'}` : null,
+    r.unread ? `✉ ${r.unread.toLocaleString()} unread` : null,
+  ].filter(Boolean);
+  const todos = Array.isArray(r.tomorrowTodos) ? r.tomorrowTodos : [];
+  out.innerHTML = `
+    <div class="deck-plan-greeting">${esc(r.greeting || "Day's done, Will — here's the wrap.")}</div>
+    ${chips.length ? `<div class="deck-plan-chips">${chips.map((ch) => `<span class="deck-plan-chip">${esc(ch)}</span>`).join('')}</div>` : ''}
+    ${todos.length ? `<div class="deck-plan-focus-label">On deck for tomorrow</div><div class="deck-wrap-todos">` + todos.map((t) => `
+      <div class="deck-wrap-todo"><span class="deck-wrap-todo-ic">✓</span><span class="deck-wrap-todo-text">${esc(String(t).slice(0, 140))}</span></div>`).join('') + `</div>` : `<div class="deck-digest-empty">Nothing queued for tomorrow — clean slate.</div>`}
+    <div class="deck-plan-actions"><button class="deck-plan-push" id="deck-wrap-push">📲 Send to my phone</button></div>
+    <div class="deck-digest-foot">${r.date ? esc(r.date) + ' · ' : ''}your evening at a glance</div>`;
+  const push = document.getElementById('deck-wrap-push');
+  if (push) push.onclick = async () => {
+    push.disabled = true; push.textContent = '📲 Sending…';
+    const pr = await jget('/api/brain/day-wrap/push', 30000, 'POST');
+    if (pr && pr.ok) { push.disabled = false; push.textContent = '✓ Sent to your phone'; }
+    else { push.disabled = false; push.textContent = '✗ Couldn’t send'; }
+  };
 }
 
 async function loadSubs() {

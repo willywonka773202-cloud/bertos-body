@@ -1048,6 +1048,104 @@ def setup_brain_routes() -> APIRouter:
             summary[c["status"]] = summary.get(c["status"], 0) + 1
         return {"ok": True, "checks": checks, "ready": summary.get("warn", 0) == 0, "summary": summary}
 
+    @router.get("/memory-search")
+    async def brain_memory_search(q: str = "", owner: str = Depends(require_user)):
+        """Search Bert's durable memory from the HomeDeck. The brain exposes no
+        server-side text search (the graph route's ?q= is ignored — verified
+        live), so we pull the most recent notes and filter their previews here:
+        case-insensitive, every word of the query must appear. Deterministic,
+        read-only, and fails soft to zero hits when the brain is down."""
+        q = (q or "").strip()
+        if not q:
+            return {"ok": True, "q": "", "hits": [], "total": 0}
+        r = await _brain_get("/api/memory/recent?limit=200", 15.0)
+        if not r.get("ok"):
+            return {"ok": True, "q": q, "hits": [], "total": 0,
+                    "note": r.get("error") or "brain offline"}
+        notes = (r.get("data") or {}).get("notes") or []
+        words = [w for w in q.lower().split() if w]
+        hits = []
+        for n in notes:
+            if not isinstance(n, dict):
+                continue
+            preview = str(n.get("preview") or "")
+            hay = preview.lower()
+            if not words or not all(w in hay for w in words):
+                continue
+            hits.append({
+                "preview": preview[:220],
+                "ts": n.get("ts"),
+                "kind": n.get("kind"),
+                "source": n.get("source"),
+            })
+        return {"ok": True, "q": q, "hits": hits[:12], "total": len(hits)}
+
+    @router.get("/day-wrap")
+    async def brain_day_wrap(owner: str = Depends(require_user)):
+        """Evening Wrap — the bookend to the morning Daily Plan. What shipped
+        today (builds / commits / new memories), where the inbox stands, and
+        the top todos waiting for tomorrow. Deterministic (no LLM), read-only,
+        and fails soft to zeros so the deck always gets a usable wrap."""
+        from src.builtin_actions import gather_day_context
+        try:
+            ctx = await gather_day_context(owner or "")
+        except Exception:  # belt-and-braces: the wrap must never 500
+            ctx = {}
+        brain = ctx.get("brain") or {}
+        todos = ctx.get("todos") or []
+        unread = ctx.get("unread_count") or 0
+        builds = brain.get("builds", 0)
+        greeting = (
+            f"Day's done, Will — {builds} build{'s' if builds != 1 else ''} shipped. Here's the wrap."
+            if builds else "Day's done, Will — here's the wrap."
+        )
+        return {
+            "ok": True,
+            "date": ctx.get("date_label", ""),
+            "shipped": {"builds": builds, "commits": brain.get("commits", 0),
+                        "newMemories": brain.get("new_mems", 0)},
+            "unread": unread,
+            "tomorrowTodos": todos[:3],
+            "greeting": greeting,
+        }
+
+    @router.post("/day-wrap/push")
+    async def brain_day_wrap_push(owner: str = Depends(require_user)):
+        """Send the evening wrap to the user's phone (ntfy / configured channel).
+        User-initiated self-notification — the click is the approval, same
+        channel as the 7am brief. Composed deterministically (no LLM) so it's
+        fast and always works. Never messages anyone else."""
+        from src.builtin_actions import gather_day_context
+        ctx = await gather_day_context(owner or "")
+        brain = ctx.get("brain") or {}
+        todos = ctx.get("todos") or []
+        unread = ctx.get("unread_count") or 0
+        lines = [f"🌙 Day wrap — {ctx.get('date_label', 'today')}", ""]
+        if brain.get("builds") or brain.get("commits") or brain.get("new_mems"):
+            lines.append(
+                f"🔨 Shipped: {brain.get('builds', 0)} build(s), {brain.get('commits', 0)} commit(s)"
+                f" · 🧠 {brain.get('new_mems', 0)} new memories"
+            )
+        else:
+            lines.append("🔨 Nothing shipped today — fresh start tomorrow.")
+        lines.append(f"✉ {unread:,} unread")
+        if todos:
+            lines.append("")
+            lines.append("→ Tomorrow: " + "; ".join(todos[:3]))
+        body = "\n".join(lines)
+        try:
+            from routes.note_routes import dispatch_reminder
+            res = await dispatch_reminder(
+                title="Bert · Day wrap",
+                note_body=body,
+                note_id="day-wrap-manual",
+                owner=owner or "",
+                free_only=True,
+            )
+            return {"ok": True, "dispatched": res, "preview": body[:280]}
+        except Exception as e:
+            return {"ok": False, "error": str(e)[:200]}
+
     @router.post("/notify-test")
     async def brain_notify_test(owner: str = Depends(require_user)):
         """Send a test push to the configured channel (ntfy → phone) so the user
