@@ -325,7 +325,7 @@ To expose Odysseus on a local network or Tailscale with HTTPS:
 2. Generate a locally-trusted cert for your LAN/Tailscale IPs using [mkcert](https://github.com/FiloSottile/mkcert):
    ```bash
    mkcert -install
-   mkcert -cert-file cert.pem -key-file key.pem 192.168.1.100 tailscale-ip
+   mkcert -cert-file cert.pem -key-file key.pem <PRIVATE_HOST> tailscale-ip
    ```
 3. Run `uvicorn` with the generated certs:
    ```bash
