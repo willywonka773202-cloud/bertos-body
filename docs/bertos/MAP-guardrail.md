@@ -4,7 +4,7 @@ I now have the complete picture, including the critical bypass: `webhook_routes.
 
 # Free-First Cost Guardrail — Phase-1 Integration Surface (Odysseus `bertos` branch)
 
-Read-only recon complete. All anchors verified against actual code at `/Users/willlambert/Documents/odysseus`. Odysseus has **no cost concept today** — confirmed (no `is_paid`, no `BERTOS_ALLOW_PAID`, no cost grep hits anywhere).
+Read-only recon complete. All anchors verified against actual code at `<LOCAL_PROJECT_PATH>`. Odysseus has **no cost concept today** — confirmed (no `is_paid`, no `BERTOS_ALLOW_PAID`, no cost grep hits anywhere).
 
 ## 1. `resolve_endpoint()` anatomy (`src/endpoint_resolver.py`)
 
