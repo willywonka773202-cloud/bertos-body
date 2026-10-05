@@ -6,7 +6,7 @@ I have everything needed. Here is the deliverable.
 
 # Phase-1 Memory→Vault Integration Surface: Recon Notes
 
-**Repo:** `/Users/willlambert/Documents/odysseus` · branch `bertos` (from `dev`) · `src/memory.py` read in full (388 lines) · 730 `.py` files grepped exhaustively.
+**Repo:** `<LOCAL_PROJECT_PATH>` · branch `bertos` (from `dev`) · `src/memory.py` read in full (388 lines) · 730 `.py` files grepped exhaustively.
 
 ## VERDICT (top line): "Only reimplement the 5 methods" is a **TRAP**, not safe.
 
@@ -90,7 +90,7 @@ These read/write `memory.json` **directly** and will **silently diverge** the mo
 
 ## 5. VAULT format — and a SCHEMA-MISMATCH WARNING
 
-The real vault at `/Users/willlambert/Documents/BertOS-Vault/` **already exists** with one-`.md`-per-memory under `Memory/<projectId>/`. ProjectId folders observed: `global`, `local`, `github`, `bench-*`, and many UUIDs. 721 `.md` files. Filename pattern: `<kind>--<slug>--<hash8>.md` (or `<kind>--<slug>.md`).
+The real vault at `<LOCAL_PROJECT_PATH>` **already exists** with one-`.md`-per-memory under `Memory/<projectId>/`. ProjectId folders observed: `global`, `local`, `github`, `bench-*`, and many UUIDs. 721 `.md` files. Filename pattern: `<kind>--<slug>--<hash8>.md` (or `<kind>--<slug>.md`).
 
 **Actual frontmatter schema (verified across global/local/github/UUID/bench notes):**
 ```yaml
