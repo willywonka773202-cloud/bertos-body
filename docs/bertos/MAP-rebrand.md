@@ -4,7 +4,7 @@ I now have a complete, verified picture. No `og:`/`twitter:` meta tags exist. Th
 
 # Odysseus → BertOS Rebrand: Phase-1 Edit List (READ-ONLY recon)
 
-Repo: `/Users/willlambert/Documents/odysseus`, branch `bertos` (forked from `dev` @ `62ffcb6`). All claimed files exist. Verified against actual code — several claimed line anchors were stale; corrected below, plus **8 user-facing occurrences the brief missed**.
+Repo: `<LOCAL_PROJECT_PATH>`, branch `bertos` (forked from `dev` @ `62ffcb6`). All claimed files exist. Verified against actual code — several claimed line anchors were stale; corrected below, plus **8 user-facing occurrences the brief missed**.
 
 ## A. Verification of claimed anchors (corrections in bold)
 
