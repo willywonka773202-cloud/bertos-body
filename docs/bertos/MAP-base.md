@@ -4,7 +4,7 @@ All evidence gathered. Here is the deliverable.
 
 # Phase-1 Branch Decision: `dev` vs `main` — Recon Findings
 
-**Repo:** `/Users/willlambert/Documents/odysseus` · **Branch checked out:** `bertos` (== `origin/dev` tip) · **HEAD:** `62ffcb6` (2026-06-09) · **origin/main:** `7367325` (2026-06-05, 4 days older) · **merge-base:** `e0e250d`
+**Repo:** `<LOCAL_PROJECT_PATH>` · **Branch checked out:** `bertos` (== `origin/dev` tip) · **HEAD:** `62ffcb6` (2026-06-09) · **origin/main:** `7367325` (2026-06-05, 4 days older) · **merge-base:** `e0e250d`
 **Remote note:** both `origin` and `upstream` point at the same URL (`pewdiepie-archdaemon/odysseus.git`) — no separate BertOS fork remote is configured here; you are diffing against upstream's own main/dev.
 
 ## 1. Divergence (both directions)
