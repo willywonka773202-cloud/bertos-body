@@ -1,3 +1,13 @@
+# BertOS / Odysseus workspace experiment
+
+This is an AI-assisted adaptation of [Odysseus](https://github.com/pewdiepie-archdaemon/odysseus), not an independently authored replacement for its upstream code. Retain the existing upstream license and attribution. The default branch here is `bertos`. Historical deployment notes are not current setup or security guarantees.
+
+[Personal portfolio](https://will-lambert-portfolio.vercel.app) · [Project updates](https://will-lambert-portfolio.vercel.app/updates.html)
+
+---
+
+## Existing technical documentation
+
 # BertOS
 
 > **Branch note:** `dev` is the default branch and contains the latest development changes, but it may be unstable. For the more stable curated branch, use [`main`](https://github.com/pewdiepie-archdaemon/odysseus/tree/main).
