@@ -6,8 +6,8 @@
 **Master prompt §5:** transplant the TypeScript coding brain into the Odysseus-fork body **via MCP — WITHOUT re-coding it in Python.**
 
 > Two repos, one brain:
-> - **Brain (bertosV2, TypeScript/Next):** `/Users/willlambert/Documents/bertosV2` — Forge (Deep Build), Council, Auto Mode, the daemon, all guardrails.
-> - **Body (Odysseus fork, Python, branch `bertos`):** `/Users/willlambert/Documents/odysseus` — the agent loop + MCP host that will *call* the brain as tools.
+> - **Brain (bertosV2, TypeScript/Next):** `<LOCAL_PROJECT_PATH>` — Forge (Deep Build), Council, Auto Mode, the daemon, all guardrails.
+> - **Body (Odysseus fork, Python, branch `bertos`):** `<LOCAL_PROJECT_PATH>` — the agent loop + MCP host that will *call* the brain as tools.
 > - **The bridge:** a standalone Node stdio MCP server in the brain repo, spawned by the body. It re-uses the brain wholesale; zero Python re-implementation.
 
 ---
@@ -19,7 +19,7 @@
 The bridge is a single standalone Node ESM file:
 
 ```
-/Users/willlambert/Documents/bertosV2/scripts/brain-mcp-server.mjs
+<LOCAL_PROJECT_PATH>
 ```
 
 It uses `@modelcontextprotocol/sdk` (`McpServer` + `StdioServerTransport`) and is **a thin HTTP client.** Every tool POSTs/GETs the brain's existing Next API routes; it imports **no brain libs**.
@@ -131,7 +131,7 @@ A Node stdio server does not fit `_BUILTIN_SERVERS` (Python-script shape, launch
 _BUILTIN_NODE_SERVERS = {
     "brain": {
         "name": "Built-in: Brain Bridge",
-        "script": "/Users/willlambert/Documents/bertosV2/scripts/brain-mcp-server.mjs",
+        "script": "<LOCAL_PROJECT_PATH>",
         "env": {
             "BERTOS_BASE_URL": "http://127.0.0.1:3000",
             "BERTOS_DAEMON_URL": "http://127.0.0.1:4319",
@@ -159,7 +159,7 @@ for server_id, cfg in _BUILTIN_NODE_SERVERS.items():
 
 `connect_server` (`mcp_manager.py:148`) → `_connect_stdio` builds `StdioServerParameters(command, args, env={**os.environ, **env})`, runs `session.initialize()` then `session.list_tools()`, storing schemas. Runs at startup via `app.py:897` (`register_builtin_servers`), **with no 20s timeout** on the built-in path.
 
-> **Use an absolute node path.** The maps note PATH may be minimal under a service manager; `shutil.which("node")` resolves `/Users/willlambert/.local/bin/node` (verified present, v22.22.3).
+> **Use an absolute node path.** The maps note PATH may be minimal under a service manager; `shutil.which("node")` resolves `<LOCAL_PROJECT_PATH>` (verified present, v22.22.3).
 
 ### DB-row alternative (if Will wants a UI toggle)
 Admin-gated `POST /mcp/servers` (`routes/mcp_routes.py:152`) with form fields:
@@ -167,7 +167,7 @@ Admin-gated `POST /mcp/servers` (`routes/mcp_routes.py:152`) with form fields:
 name=Brain Bridge
 transport=stdio
 command=node
-args=["/Users/willlambert/Documents/bertosV2/scripts/brain-mcp-server.mjs"]
+args=["<LOCAL_PROJECT_PATH>"]
 env={"BERTOS_BASE_URL":"http://127.0.0.1:3000","BRAIN_ALLOW_PAID":"0"}
 ```
 Gets a uuid8 id (tools become `mcp__<uuid>__*`), picked up on restart by `connect_all_enabled` (`mcp_manager.py:410`) — **subject to the 20s startup timeout (`app.py:901`)**, so the bridge must connect fast (it does: no heavy imports, just MCP SDK + fetch). Toggle via `PATCH /mcp/servers/{id}`.
@@ -188,12 +188,12 @@ Each slice ends with a concrete "the BertOS agent invokes the tool → real brai
 
 ### Slice A — "hello brain": 1-tool MCP server, body connects + lists it
 **Change:**
-- `cd /Users/willlambert/Documents/bertosV2 && npm i @modelcontextprotocol/sdk` (currently **not installed** — confirmed).
+- `cd <LOCAL_PROJECT_PATH>` (currently **not installed** — confirmed).
 - Write `scripts/brain-mcp-server.mjs`: `McpServer` over `StdioServerTransport`, registering exactly **one** tool `brain_health` (the §2 spec). No HTTP yet required to prove the pipe — `brain_health` can return `{ ok:true, baseUrl }` plus a best-effort `GET /api/deep/jobs?limit=1` probe.
 - Add the `_BUILTIN_NODE_SERVERS` registry + node loop to `src/builtin_mcp.py` (§3).
 
 **Verify (run it):**
-1. `node /Users/willlambert/Documents/bertosV2/scripts/brain-mcp-server.mjs` should start and sit on stdio without crashing (Ctrl-C to exit).
+1. `node <LOCAL_PROJECT_PATH>` should start and sit on stdio without crashing (Ctrl-C to exit).
 2. Start the body; in logs confirm `connect_server("brain", ...)` succeeded and `list_tools` returned `brain_health`.
 3. In a BertOS agent turn, confirm the tool appears as `mcp__brain__brain_health` and **invoke it** → returns the health JSON. **Pipe proven.** (No Next/daemon dependency for the bridge to load; the probe just reports `next: down` if the app isn't up.)
 
@@ -242,4 +242,4 @@ Each slice ends with a concrete "the BertOS agent invokes the tool → real brai
 - server-only barrier (why not lib-import): orchestrators begin `import "server-only"`; pure exceptions are `lib/deepbuild/core.ts`, `lib/providers/strategy.ts`, `lib/auto/verdict.ts` (not the orchestrators).
 - Daemon: `scripts/bertos-daemon.mjs` — `127.0.0.1:4319` (`BERTOS_DAEMON_PORT` :50), `/health` (:535), optional `BERTOS_DAEMON_TOKEN` (:54).
 - Body ingestion: `src/mcp_manager.py:148` `connect_server`, `:179` `_connect_stdio`, `:543`/`:604` built-in skip rule, `:555` `mcp__{server_id}__{tool}` namespacing; `src/builtin_mcp.py:69`/`:89`/`:98–123` registries + connect template; `app.py:897` startup; `routes/mcp_routes.py:152` `POST /mcp/servers`; `core/database.py:388` `McpServer`.
-- Env: MCP SDK **not yet installed** in bertosV2 (`npm i @modelcontextprotocol/sdk` in Slice A); node v22.22.3 at `/Users/willlambert/.local/bin/node`.
+- Env: MCP SDK **not yet installed** in bertosV2 (`npm i @modelcontextprotocol/sdk` in Slice A); node v22.22.3 at `<LOCAL_PROJECT_PATH>`.
