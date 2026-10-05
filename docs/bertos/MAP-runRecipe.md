@@ -6,7 +6,7 @@ That completes the investigation. Here is the deliverable.
 
 # Odysseus (`bertos` branch) — Local Boot Recipe & Phase-1 Verification Harness
 
-Repo: `/Users/willlambert/Documents/odysseus` · branch `bertos` (HEAD `62ffcb6`) · clean checkout (no `venv/`, `.env`, or `data/` yet).
+Repo: `<LOCAL_PROJECT_PATH>` · branch `bertos` (HEAD `62ffcb6`) · clean checkout (no `venv/`, `.env`, or `data/` yet).
 
 ## TL;DR
 - **Recommended path: native venv, run `./start-macos.sh`.** It is purpose-built for this exact machine (Apple Silicon, one command), and Docker on macOS is explicitly discouraged by the maintainers (no Metal GPU access — `start-macos.sh:11-13`).
@@ -59,7 +59,7 @@ Repo: `/Users/willlambert/Documents/odysseus` · branch `bertos` (HEAD `62ffcb6`
 brew --version || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 # 1. boot (creates venv with arm64 Py3.11, installs deps, setup, launches uvicorn:7860, opens browser)
-cd /Users/willlambert/Documents/odysseus
+cd <LOCAL_PROJECT_PATH>
 ./start-macos.sh
 ```
 
@@ -90,7 +90,7 @@ LOCALHOST_BYPASS=true
 
 ## FALLBACK PATH (manual native, if `start-macos.sh` misbehaves)
 ```bash
-cd /Users/willlambert/Documents/odysseus
+cd <LOCAL_PROJECT_PATH>
 /opt/homebrew/bin/python3.11 -m venv venv      # MUST be arm64 Homebrew Python, NOT system 3.9.6
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
