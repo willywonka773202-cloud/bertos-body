@@ -10,7 +10,7 @@ package). Do it when **awake** (it restarts the live brain; confirm it comes bac
 ## On the LAPTOP — serve the package over Tailscale
 ```bash
 cd ~/bertos-serve 2>/dev/null || mkdir -p ~/bertos-serve && cp ~/bertos-migration/bertos-brain.tgz ~/bertos-serve/ && cd ~/bertos-serve
-python3 -m http.server 8077 --bind 100.103.129.83
+python3 -m http.server 8077 --bind <PRIVATE_HOST>
 ```
 (sha256 of bertos-brain.tgz: `7e05f3463e3b35f9657940e9330699462d901121ce775cdbe6fac0fde73614be`)
 
@@ -22,7 +22,7 @@ $brain = "C:\Users\owner\Documents\bertosV2"   # <-- adjust if different
 
 # 1) Download + verify
 cd $brain\..
-curl.exe -o bertos-brain.tgz http://100.103.129.83:8077/bertos-brain.tgz
+curl.exe -o bertos-brain.tgz http://<PRIVATE_HOST>:8077/bertos-brain.tgz
 (Get-FileHash bertos-brain.tgz -Algorithm SHA256).Hash   # must equal the sha256 above
 
 # 2) Extract over the existing brain (preserves node_modules + .bertos-runtime)
@@ -40,8 +40,8 @@ npm run bertos:host
 ## Verify (either machine)
 ```bash
 # Council + Deep Build routes should now exist (was 404):
-curl -s -o /dev/null -w "council: %{http_code}\n"  -X POST -H "content-type: application/json" -d "{}" http://100.127.213.97:3000/api/chat/council
-curl -s -o /dev/null -w "deepjobs: %{http_code}\n" -X POST -H "content-type: application/json" -d "{}" http://100.127.213.97:3000/api/deep/jobs
+curl -s -o /dev/null -w "council: %{http_code}\n"  -X POST -H "content-type: application/json" -d "{}" http://<PRIVATE_HOST>:3000/api/chat/council
+curl -s -o /dev/null -w "deepjobs: %{http_code}\n" -X POST -H "content-type: application/json" -d "{}" http://<PRIVATE_HOST>:3000/api/deep/jobs
 # 400 = route exists ✓   404 = still old
 ```
 The body picks up the new routes immediately (the bridge re-probes per call — no
