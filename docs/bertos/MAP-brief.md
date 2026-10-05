@@ -4,7 +4,7 @@ I have everything. The recon is complete and verified against actual code. Here 
 
 # Phase-1 "Daily Brief" — Integration Surface Map & Wiring Plan
 
-**Repo:** `/Users/willlambert/Documents/odysseus` · branch `bertos` (off `dev`) · READ-ONLY recon, nothing modified.
+**Repo:** `<LOCAL_PROJECT_PATH>` · branch `bertos` (off `dev`) · READ-ONLY recon, nothing modified.
 
 ## TL;DR — the single most important finding
 
