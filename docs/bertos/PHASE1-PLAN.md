@@ -3,7 +3,7 @@ I'll synthesize the maps and adversarial verdicts into the Phase-1 plan. The ver
 ---
 
 # BertOS Phase-1 Execution Plan
-**Repo:** `/Users/willlambert/Documents/odysseus` · branch `bertos`
+**Repo:** `<LOCAL_PROJECT_PATH>` · branch `bertos`
 
 ## 1. RECOMMENDED BASE
 
@@ -27,7 +27,7 @@ Dependency order: **0 boot harness → 1 rebrand → 2 memory→vault → 3 guar
 
 **(b) Verification — how we RUN it, what REAL output proves it:**
 ```bash
-cd /Users/willlambert/Documents/odysseus
+cd <LOCAL_PROJECT_PATH>
 ./start-macos.sh          # creates arm64 Py3.11 venv, installs, auto-fixes chromadb-client→chromadb, launches uvicorn:7860
 ```
 - Success line in logs: **`Application startup complete`** (warnings `MCP startup failed (non-critical)`, `Tool index warmup failed`, `Warmup ping failed` are EXPECTED with no Ollama/Chroma).
